@@ -1,0 +1,28 @@
+# PREPARE Core v1.0 — Python dependencies
+# -----------------------------------------------------------------------------
+# Pinned to compatible versions. Use pip install -r requirements.txt inside an
+# active virtual environment.
+
+# Web framework + Pydantic schema contract
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+pydantic==2.10.3
+python-multipart==0.0.20
+
+# Configuration
+python-dotenv==1.0.1
+
+# Claude SDKs
+#   - claude-agent-sdk: multi-agent orchestration (used by ai_assisted +
+#     multi_agent engines via agent_app.py / agent_tools.py)
+#   - anthropic:        used directly by the Tier-3 LLM fallback inside
+#                       backend/pdf_extractor.py (not for narrative — that
+#                       call is removed in v1.0)
+claude-agent-sdk==0.1.0
+anthropic==0.40.0
+
+# PDF extraction (Tier 1 + Tier 2)
+pdfplumber==0.11.4
+
+# Excel generation (per-statement + master workbook)
+openpyxl==3.1.5

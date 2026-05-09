@@ -1,0 +1,2559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PREPARE Core v1.1 · Statement Reconciliation Workspace</title>
+<style>
+  /* ─────────────────────────────────────────────────────────────────
+   * Design tokens
+   *   Base:           Option 1 — Light Professional SaaS
+   *   Header accent:  Option 2 — Deep Navy band
+   *   v1.1 typography: bumped KPI/metric sizes, larger view titles
+   * ───────────────────────────────────────────────────────────────── */
+  :root {
+    /* Page / layout */
+    --bg-page:        #F7F9FC;
+    --bg-card:        #FFFFFF;
+    --bg-section:     #F1F5F9;
+    --bg-muted:       #FAFBFD;
+    --border:         #E2E8F0;
+    --border-strong:  #CBD5E1;
+
+    /* Text */
+    --text-primary:   #0F172A;
+    --text-secondary: #475569;
+    --text-muted:     #94A3B8;
+
+    /* Brand / primary action */
+    --brand-blue:      #2563EB;
+    --brand-blue-hov:  #1D4ED8;
+    --brand-blue-soft: #DBEAFE;
+
+    /* Header band (Option 2 navy) */
+    --header-navy:     #0F172A;
+    --header-accent:   #1E3A8A;
+
+    /* Status colors */
+    --ok:        #16A34A;   --ok-soft:        #DCFCE7;
+    --warn:      #EA580C;   --warn-soft:      #FFEDD5;
+    --err:       #DC2626;   --err-soft:       #FEE2E2;
+    --info:      #7C3AED;   --info-soft:      #EDE9FE;
+    --purple:    #7C3AED;   --purple-soft:    #EDE9FE;
+    --neutral:   #475569;   --neutral-soft:   #F1F5F9;
+    --navy:      #1E3A8A;   --navy-soft:      #E0E7FF;
+
+    /* Per-agent cycle colors (5: green, blue, purple, amber, navy) */
+    --agent-1:      var(--ok);
+    --agent-1-soft: var(--ok-soft);
+    --agent-2:      var(--brand-blue);
+    --agent-2-soft: var(--brand-blue-soft);
+    --agent-3:      var(--purple);
+    --agent-3-soft: var(--purple-soft);
+    --agent-4:      var(--warn);
+    --agent-4-soft: var(--warn-soft);
+    --agent-5:      var(--navy);
+    --agent-5-soft: var(--navy-soft);
+
+    /* Layout */
+    --sidebar-width: 220px;
+    --header-height: 64px;
+    --radius:    8px;
+    --radius-sm: 6px;
+    --shadow:    0 1px 2px rgba(15, 23, 42, 0.05), 0 1px 3px rgba(15, 23, 42, 0.06);
+    --shadow-lg: 0 4px 12px rgba(15, 23, 42, 0.08);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0;
+    font-family: "Inter", "Helvetica Neue", "Helvetica", "Arial", sans-serif;
+    background: var(--bg-page); color: var(--text-primary);
+    line-height: 1.5; font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ─────────────────────────────────────────────────────────────────
+   * Header band — fixed across all views
+   * ───────────────────────────────────────────────────────────────── */
+  header {
+    background: var(--header-navy);
+    color: #FFFFFF;
+    padding: 0 1.5rem;
+    height: var(--header-height);
+    display: flex; align-items: center;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .header-inner {
+    width: 100%;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 1.5rem;
+  }
+  .header-left {
+    display: flex; align-items: center; gap: 0.85rem;
+  }
+  .hamburger {
+    display: none;
+    background: transparent; border: 1px solid #334155;
+    color: #FFFFFF; cursor: pointer;
+    width: 36px; height: 36px;
+    border-radius: 6px;
+    align-items: center; justify-content: center;
+  }
+  .hamburger:hover { background: #1E293B; }
+  .brand { display: flex; align-items: center; gap: 0.85rem; }
+  .brand-icon {
+    width: 36px; height: 36px; border-radius: 8px;
+    background: var(--brand-blue);
+    display: flex; align-items: center; justify-content: center;
+    font-family: Georgia, serif; font-size: 1.2rem; font-weight: 700;
+    color: #FFFFFF;
+  }
+  .brand-text h1 {
+    font-size: 1.05rem; font-weight: 700;
+    margin: 0; letter-spacing: -0.01em; color: #FFFFFF;
+  }
+  .brand-text .subtitle {
+    font-size: 0.74rem; color: #CBD5E1;
+    margin-top: 0.05rem; font-weight: 400;
+  }
+
+  .header-status {
+    display: flex; align-items: center; gap: 1rem;
+    font-size: 0.85rem;
+  }
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    padding: 0.3rem 0.7rem;
+    background: rgba(22, 163, 74, 0.18);
+    color: #4ADE80;
+    border-radius: 999px;
+    font-weight: 600; font-size: 0.78rem;
+  }
+  .status-pill.failed  { background: rgba(220, 38, 38, 0.18); color: #FCA5A5; }
+  .status-pill.partial { background: rgba(234, 88, 12, 0.18); color: #FDBA74; }
+  .status-pill .dot {
+    width: 6px; height: 6px; border-radius: 50%; background: currentColor;
+  }
+  .header-meta {
+    color: #CBD5E1; font-size: 0.78rem;
+    text-align: right; line-height: 1.3;
+  }
+  .header-meta .label { color: #94A3B8; }
+
+  .btn-header-download {
+    background: transparent;
+    color: #FFFFFF;
+    border: 1px solid #334155;
+    padding: 0.5rem 0.9rem;
+    border-radius: 6px;
+    font-size: 0.82rem; font-weight: 600;
+    cursor: pointer; text-decoration: none;
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    transition: all 0.15s;
+  }
+  .btn-header-download:hover { background: #1E293B; border-color: #475569; }
+  .btn-header-download.disabled {
+    opacity: 0.4; cursor: not-allowed; pointer-events: none;
+  }
+
+  /* ─────────────────────────────────────────────────────────────────
+   * App shell — sidebar + main content
+   * ───────────────────────────────────────────────────────────────── */
+  .app-shell {
+    display: grid;
+    grid-template-columns: var(--sidebar-width) 1fr;
+    min-height: calc(100vh - var(--header-height));
+  }
+  .app-shell.no-sidebar {
+    grid-template-columns: 1fr;
+  }
+
+  /* Sidebar */
+  .sidebar {
+    background: var(--bg-card);
+    border-right: 1px solid var(--border);
+    padding: 1.25rem 0.85rem 1rem;
+    display: flex; flex-direction: column;
+    position: sticky; top: var(--header-height);
+    height: calc(100vh - var(--header-height));
+    overflow-y: auto;
+  }
+  .nav-section-label {
+    font-size: 0.7rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--text-muted);
+    padding: 0 0.75rem; margin-bottom: 0.5rem;
+  }
+  .nav-list {
+    list-style: none; margin: 0; padding: 0;
+    display: flex; flex-direction: column; gap: 0.15rem;
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: 0.7rem;
+    padding: 0.55rem 0.75rem;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 0.88rem; font-weight: 500;
+    text-decoration: none;
+    transition: background 0.12s, color 0.12s;
+  }
+  .nav-item:hover {
+    background: var(--bg-section); color: var(--text-primary);
+  }
+  .nav-item.active {
+    background: var(--brand-blue-soft);
+    color: var(--brand-blue);
+    font-weight: 600;
+  }
+  .nav-item .nav-icon {
+    width: 18px; height: 18px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .nav-item .nav-icon svg { width: 18px; height: 18px; }
+  .nav-item .nav-count {
+    margin-left: auto;
+    background: var(--bg-section);
+    color: var(--text-secondary);
+    padding: 0.05rem 0.45rem;
+    border-radius: 999px;
+    font-size: 0.7rem; font-weight: 700;
+  }
+  .nav-item.active .nav-count {
+    background: var(--brand-blue);
+    color: #FFFFFF;
+  }
+  .sidebar-footer {
+    margin-top: auto; padding-top: 1rem;
+    border-top: 1px solid var(--border);
+  }
+  .new-run-link {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.55rem 0.75rem;
+    border-radius: 6px;
+    color: var(--text-secondary);
+    font-size: 0.85rem; font-weight: 500;
+    text-decoration: none;
+    cursor: pointer;
+    background: none; border: none; width: 100%; text-align: left;
+    font-family: inherit;
+  }
+  .new-run-link:hover { background: var(--bg-section); color: var(--text-primary); }
+
+  /* Main content area */
+  .main {
+    padding: 1.75rem 2rem 3rem;
+    min-width: 0;
+  }
+  .main.upload {
+    max-width: 1100px; margin: 0 auto;
+  }
+
+  /* View titles */
+  .view-title-row {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 1rem; margin-bottom: 1.5rem;
+  }
+  .view-title-block { display: flex; align-items: flex-start; gap: 1rem; min-width: 0; }
+  .view-title-icon {
+    width: 44px; height: 44px;
+    border-radius: 10px;
+    background: var(--vt-soft, var(--brand-blue-soft));
+    color: var(--vt-color, var(--brand-blue));
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .view-title-icon svg { width: 22px; height: 22px; }
+  .view-title h1 {
+    font-size: 1.55rem; font-weight: 700;
+    color: var(--text-primary);
+    margin: 0; letter-spacing: -0.02em;
+    line-height: 1.2;
+  }
+  .view-title .view-subtitle {
+    color: var(--text-secondary); font-size: 0.9rem;
+    margin-top: 0.25rem;
+    max-width: 760px;
+  }
+  .view-title-controls {
+    display: flex; gap: 0.6rem; align-items: center; flex-shrink: 0;
+  }
+
+  /* ─────────────────────────────────────────────────────────────────
+   * Cards (generic)
+   * ───────────────────────────────────────────────────────────────── */
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1rem;
+    box-shadow: var(--shadow);
+  }
+  .card h2 {
+    font-size: 0.95rem; font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 1rem;
+    letter-spacing: -0.01em;
+  }
+  .card-link {
+    font-size: 0.82rem; color: var(--brand-blue);
+    text-decoration: none; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 0.25rem;
+  }
+  .card-link:hover { color: var(--brand-blue-hov); }
+
+  /* ─────────────────────────────────────────────────────────────────
+   * Upload screen — two-column layout
+   * ───────────────────────────────────────────────────────────────── */
+  .upload-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+  .upload-page-title {
+    font-size: 1.85rem; font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 0.4rem; letter-spacing: -0.02em;
+  }
+  .upload-page-subtitle {
+    color: var(--text-secondary); font-size: 0.95rem;
+    margin: 0 0 1.75rem; max-width: 760px;
+  }
+
+  /* Form fields */
+  .field-row {
+    display: grid;
+    grid-template-columns: 170px 1fr;
+    gap: 0.85rem;
+    margin-bottom: 0.85rem;
+    align-items: center;
+  }
+  .field-row label {
+    font-weight: 600; font-size: 0.85rem; color: var(--text-primary);
+  }
+  select, input[type="file"] {
+    font-family: inherit; font-size: 0.88rem;
+    padding: 0.55rem 0.75rem;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px; background: var(--bg-card);
+    color: var(--text-primary); width: 100%;
+  }
+  select:focus, input:focus {
+    outline: none; border-color: var(--brand-blue);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  }
+
+  .pdf-list {
+    display: flex; flex-direction: column; gap: 0.5rem;
+    margin: 0.75rem 0;
+    min-height: 0;
+  }
+  .pdf-slot {
+    display: flex; align-items: center; gap: 0.7rem;
+    background: var(--bg-section); border: 1px solid var(--border);
+    border-left: 3px solid var(--ok);
+    border-radius: 6px; padding: 0.55rem 0.85rem;
+    font-size: 0.85rem;
+  }
+  .pdf-slot-icon { font-size: 1.05rem; flex-shrink: 0; }
+  .pdf-slot-name {
+    flex: 1; color: var(--text-primary); font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .pdf-slot-size { color: var(--text-muted); font-size: 0.78rem; white-space: nowrap; }
+  .pdf-slot-remove {
+    background: none; border: none; cursor: pointer;
+    color: var(--text-muted); font-size: 1.1rem; padding: 0 0.2rem;
+    line-height: 1;
+  }
+  .pdf-slot-remove:hover { color: var(--err); }
+
+  .add-pdf-btn {
+    display: flex; align-items: center; gap: 0.5rem;
+    background: var(--bg-card); border: 2px dashed var(--brand-blue);
+    border-radius: 6px; padding: 0.7rem 1rem; cursor: pointer;
+    font-family: inherit; font-size: 0.88rem;
+    color: var(--brand-blue); font-weight: 600;
+    width: 100%; justify-content: center;
+    transition: all 0.15s;
+  }
+  .add-pdf-btn:hover { background: var(--brand-blue-soft); }
+  .add-pdf-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .hint { color: var(--text-muted); font-size: 0.78rem; margin-top: 0.4rem; }
+
+  .file-drop {
+    display: block; border: 2px dashed var(--border-strong);
+    border-radius: 6px; padding: 1.1rem; text-align: center;
+    background: var(--bg-section); cursor: pointer;
+    transition: all 0.15s;
+  }
+  .file-drop:hover { border-color: var(--brand-blue); background: var(--brand-blue-soft); }
+  .file-drop.has-file { border-color: var(--ok); background: var(--ok-soft); }
+  .file-drop input { display: none; }
+  .file-drop-label { font-weight: 600; color: var(--text-primary); font-size: 0.88rem; }
+  .file-drop-sub { color: var(--text-muted); font-size: 0.78rem; margin-top: 0.25rem; }
+
+  .advanced-toggle {
+    margin-top: 0.4rem; cursor: pointer;
+    font-size: 0.85rem; color: var(--brand-blue); font-weight: 600;
+    user-select: none; display: inline-block;
+    padding: 0.25rem 0;
+  }
+  .advanced-toggle:hover { color: var(--brand-blue-hov); }
+  .advanced-toggle::before { content: "▸ "; }
+  .advanced-toggle.open::before { content: "▾ "; }
+  .advanced-content {
+    display: none; margin-top: 0.6rem; padding-top: 0.6rem;
+    border-top: 1px solid var(--border);
+  }
+  .advanced-content.open { display: block; }
+  .advanced-warn {
+    background: var(--warn-soft); border-left: 3px solid var(--warn);
+    padding: 0.55rem 0.85rem; border-radius: 4px;
+    font-size: 0.8rem; color: var(--warn);
+    margin-bottom: 0.7rem;
+  }
+
+  .actions-bar {
+    display: flex; justify-content: flex-end; align-items: center;
+    margin-top: 0.5rem;
+  }
+  .btn-primary {
+    background: var(--brand-blue); color: #FFFFFF;
+    border: none; border-radius: 6px;
+    padding: 0.75rem 1.85rem;
+    font-family: inherit; font-size: 0.95rem; font-weight: 600;
+    cursor: pointer; transition: all 0.15s;
+    box-shadow: var(--shadow);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: var(--brand-blue-hov); box-shadow: var(--shadow-lg);
+  }
+  .btn-primary:disabled {
+    background: var(--border-strong); color: var(--text-muted); cursor: not-allowed;
+  }
+
+  /* ─────────────────────────────────────────────────────────────────
+   * View visibility (hash router)
+   * ───────────────────────────────────────────────────────────────── */
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* ─────────────────────────────────────────────────────────────────
+   * Workspace view — KPI cards (bumped sizes for v1.1)
+   * ───────────────────────────────────────────────────────────────── */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 0.85rem;
+    margin-bottom: 1rem;
+  }
+  .kpi-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem 1.25rem 1.4rem;
+    box-shadow: var(--shadow);
+    position: relative;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    min-height: 168px;
+  }
+  .kpi-card::after {
+    content: ""; position: absolute;
+    bottom: 0; left: 0; right: 0; height: 3px;
+    background: var(--accent, var(--brand-blue));
+  }
+  .kpi-icon {
+    width: 40px; height: 40px;
+    border-radius: 8px;
+    background: var(--accent-soft, var(--brand-blue-soft));
+    color: var(--accent, var(--brand-blue));
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 0.95rem;
+  }
+  .kpi-icon svg { width: 20px; height: 20px; }
+  .kpi-label {
+    font-size: 0.85rem; font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.3rem;
+  }
+  .kpi-value {
+    font-size: 2.1rem; font-weight: 700;
+    color: var(--accent, var(--text-primary));
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+    margin: 0.1rem 0 0.4rem;
+  }
+  .kpi-sublabel {
+    font-size: 0.76rem; color: var(--text-muted);
+    margin-top: auto;
+  }
+  .kpi-card.k-blue   { --accent: var(--brand-blue);  --accent-soft: var(--brand-blue-soft); }
+  .kpi-card.k-green  { --accent: var(--ok);          --accent-soft: var(--ok-soft); }
+  .kpi-card.k-purple { --accent: var(--purple);      --accent-soft: var(--purple-soft); }
+  .kpi-card.k-amber  { --accent: var(--warn);        --accent-soft: var(--warn-soft); }
+  .kpi-card.k-red    { --accent: var(--err);         --accent-soft: var(--err-soft); }
+
+  /* Processing-at-a-Glance strip */
+  .glance-strip {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.5rem;
+    box-shadow: var(--shadow);
+    margin-bottom: 1rem;
+  }
+  .glance-title {
+    font-size: 0.78rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-secondary);
+    margin-bottom: 0.85rem;
+  }
+  .glance-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 1rem;
+  }
+  .glance-item { display: flex; align-items: center; gap: 0.7rem; }
+  .glance-icon {
+    width: 36px; height: 36px;
+    border-radius: 8px;
+    background: var(--g-soft, var(--brand-blue-soft));
+    color: var(--g-color, var(--brand-blue));
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .glance-icon svg { width: 18px; height: 18px; }
+  .glance-text { display: flex; flex-direction: column; min-width: 0; }
+  .glance-value {
+    font-size: 1.15rem; font-weight: 700;
+    color: var(--g-color, var(--text-primary));
+    line-height: 1.1;
+    letter-spacing: -0.01em;
+  }
+  .glance-label {
+    font-size: 0.74rem; color: var(--text-secondary);
+    margin-top: 0.15rem;
+  }
+  .gi-blue   { --g-color: var(--brand-blue);  --g-soft: var(--brand-blue-soft); }
+  .gi-green  { --g-color: var(--ok);          --g-soft: var(--ok-soft); }
+  .gi-purple { --g-color: var(--purple);      --g-soft: var(--purple-soft); }
+  .gi-amber  { --g-color: var(--warn);        --g-soft: var(--warn-soft); }
+
+  /* Validation overview tiles (4 tiles on Workspace) */
+  .vs-grid-4 {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.85rem;
+  }
+  .vs-tile {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.15rem;
+    display: flex; align-items: flex-start; gap: 0.85rem;
+    box-shadow: var(--shadow);
+  }
+  .vs-tile-icon {
+    width: 40px; height: 40px;
+    border-radius: 8px;
+    background: var(--vs-soft, var(--brand-blue-soft));
+    color: var(--vs-color, var(--brand-blue));
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .vs-tile-icon svg { width: 20px; height: 20px; }
+  .vs-tile-text {
+    display: flex; flex-direction: column; gap: 0.15rem; min-width: 0;
+  }
+  .vs-tile-value {
+    font-size: 1.65rem; font-weight: 700;
+    color: var(--vs-color, var(--text-primary));
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+  }
+  .vs-tile-label {
+    font-size: 0.85rem; font-weight: 600;
+    color: var(--text-primary);
+  }
+  .vs-tile-desc {
+    font-size: 0.73rem; color: var(--text-muted);
+    line-height: 1.4;
+  }
+  .vs-blue   { --vs-color: var(--brand-blue);  --vs-soft: var(--brand-blue-soft); }
+  .vs-green  { --vs-color: var(--ok);          --vs-soft: var(--ok-soft); }
+  .vs-purple { --vs-color: var(--purple);      --vs-soft: var(--purple-soft); }
+  .vs-amber  { --vs-color: var(--warn);        --vs-soft: var(--warn-soft); }
+  .vs-red    { --vs-color: var(--err);         --vs-soft: var(--err-soft); }
+
+  /* Workspace workbook CTA */
+  .workbook-cta {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem 1.5rem;
+    box-shadow: var(--shadow);
+    display: flex; align-items: center; gap: 1.25rem;
+    margin-bottom: 1rem;
+  }
+  .workbook-cta-icon {
+    width: 56px; height: 56px;
+    background: var(--ok-soft);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .workbook-cta-icon svg { width: 28px; height: 28px; color: var(--ok); }
+  .workbook-cta-text { flex: 1; min-width: 0; }
+  .workbook-cta-text h3 {
+    font-size: 1rem; font-weight: 700; margin: 0 0 0.25rem;
+    color: var(--text-primary);
+  }
+  .workbook-cta-text p {
+    font-size: 0.85rem; color: var(--text-secondary); margin: 0;
+  }
+  .btn-download {
+    background: var(--ok); color: #FFFFFF;
+    border: none; border-radius: 6px;
+    padding: 0.7rem 1.25rem;
+    font-family: inherit; font-size: 0.88rem; font-weight: 600;
+    cursor: pointer; text-decoration: none;
+    display: inline-flex; align-items: center; gap: 0.45rem;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  .btn-download:hover { background: #15803D; }
+  .btn-download.disabled, .btn-download:disabled {
+    background: var(--border-strong); color: var(--text-muted);
+    cursor: not-allowed; pointer-events: none;
+  }
+
+  /* ─────────────────────────────────────────────────────────────────
+   * Per-Statement view
+   * ───────────────────────────────────────────────────────────────── */
+  .ps-controls {
+    display: flex; gap: 0.6rem;
+  }
+  .ctrl-btn {
+    background: var(--bg-card);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    padding: 0.5rem 0.85rem;
+    font-family: inherit; font-size: 0.85rem; font-weight: 500;
+    color: var(--text-primary);
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    transition: background 0.15s;
+  }
+  .ctrl-btn:hover { background: var(--bg-section); }
+  .ctrl-btn select {
+    border: none; background: transparent; padding: 0;
+    font-family: inherit; font-size: 0.85rem; font-weight: 500;
+    color: var(--text-primary);
+    cursor: pointer; outline: none; width: auto;
+  }
+
+  /* Per-statement card — large, default-collapsed */
+  .ps-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 1rem;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    border-left: 4px solid var(--ag-color, var(--neutral));
+  }
+  .ps-card-head {
+    padding: 1.15rem 1.5rem;
+    display: grid;
+    grid-template-columns: auto 1fr auto auto auto;
+    gap: 1rem;
+    align-items: center;
+  }
+  .ps-card-icon-block {
+    display: flex; flex-direction: column; align-items: center; gap: 0.35rem;
+    flex-shrink: 0;
+  }
+  .ps-card-icon {
+    width: 44px; height: 44px;
+    border-radius: 9px;
+    background: var(--ag-soft, var(--bg-section));
+    color: var(--ag-color, var(--text-secondary));
+    display: flex; align-items: center; justify-content: center;
+  }
+  .ps-card-icon svg { width: 22px; height: 22px; }
+  .ps-card-badge {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: var(--ag-color, var(--neutral));
+    color: #FFFFFF;
+    font-size: 0.78rem; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .ps-card-title {
+    min-width: 0;
+  }
+  .ps-card-title h3 {
+    font-size: 1.15rem; font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 0.2rem;
+    letter-spacing: -0.01em;
+    word-break: break-word;
+  }
+  .ps-card-meta {
+    font-size: 0.82rem; color: var(--text-secondary);
+  }
+  .ps-card-meta .agent-tag {
+    color: var(--ag-color, var(--text-secondary));
+    font-weight: 600;
+  }
+  .ps-card-meta .sep { margin: 0 0.4rem; color: var(--text-muted); }
+  .ps-status-pill {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    background: var(--ag-soft);
+    color: var(--ag-color);
+    padding: 0.35rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.78rem; font-weight: 600;
+    flex-shrink: 0;
+  }
+  .ps-status-pill.failed {
+    background: var(--err-soft); color: var(--err);
+  }
+  .ps-card-download {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border-strong);
+    padding: 0.5rem 0.95rem;
+    border-radius: 6px;
+    font-size: 0.82rem; font-weight: 600;
+    text-decoration: none;
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    transition: background 0.15s;
+    flex-shrink: 0;
+  }
+  .ps-card-download:hover { background: var(--bg-section); }
+  .ps-card-download svg { width: 14px; height: 14px; color: var(--ok); }
+  .ps-chevron {
+    background: none; border: none; cursor: pointer;
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    color: var(--text-muted);
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.15s, background 0.15s;
+    flex-shrink: 0;
+  }
+  .ps-chevron:hover { background: var(--bg-section); }
+  .ps-card.expanded .ps-chevron { transform: rotate(180deg); }
+
+  /* Card body — always visible (5 metrics + summary strip) */
+  .ps-card-body {
+    padding: 0.5rem 1.5rem 1.25rem;
+  }
+  .ps-metrics {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 1rem;
+    padding: 0.65rem 0;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 0.85rem;
+  }
+  .ps-metric {
+    display: flex; flex-direction: column;
+    padding: 0.25rem 0;
+  }
+  .ps-metric-label {
+    font-size: 0.74rem; color: var(--text-secondary);
+    font-weight: 600;
+    margin-bottom: 0.2rem;
+  }
+  .ps-metric-value {
+    font-size: 1.65rem; font-weight: 700;
+    color: var(--ag-color, var(--text-primary));
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+  }
+  .ps-metric.review .ps-metric-value { color: var(--err); }
+  .ps-metric.review.zero .ps-metric-value { color: var(--text-primary); }
+
+  .ps-summary-strip {
+    background: var(--ag-soft);
+    border-left: 3px solid var(--ag-color, var(--neutral));
+    border-radius: 4px;
+    padding: 0.6rem 0.95rem;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    display: flex; align-items: flex-start; gap: 0.55rem;
+  }
+  .ps-summary-strip.clean {
+    background: var(--ok-soft); border-left-color: var(--ok);
+  }
+  .ps-summary-strip.failed {
+    background: var(--err-soft); border-left-color: var(--err);
+  }
+  .ps-summary-icon {
+    flex-shrink: 0; width: 16px; height: 16px;
+    color: var(--ag-color, var(--text-secondary));
+    display: flex; align-items: center; justify-content: center;
+    margin-top: 1px;
+  }
+  .ps-summary-icon svg { width: 16px; height: 16px; }
+  .ps-summary-strip.clean .ps-summary-icon { color: var(--ok); }
+  .ps-summary-strip.failed .ps-summary-icon { color: var(--err); }
+  .ps-summary-strip .label {
+    font-weight: 700; color: var(--text-primary);
+    margin-right: 0.3rem;
+  }
+
+  /* Card expansion — flagged vendors, tags, near-threshold, discrepancies */
+  .ps-card-expansion {
+    display: none;
+    border-top: 1px solid var(--border);
+    padding: 1.1rem 1.5rem 1.25rem;
+    background: var(--bg-muted);
+  }
+  .ps-card.expanded .ps-card-expansion { display: block; }
+  .ps-section {
+    margin-bottom: 1rem;
+  }
+  .ps-section:last-child { margin-bottom: 0; }
+  .ps-section-title {
+    font-size: 0.78rem; font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase; letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+  }
+  .ps-flagged-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.5rem;
+  }
+  .ps-flagged-item {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.55rem 0.8rem;
+    display: flex; justify-content: space-between; gap: 0.5rem;
+    align-items: center;
+    font-size: 0.83rem;
+  }
+  .ps-flagged-name {
+    font-weight: 600; color: var(--text-primary);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .ps-flagged-amount {
+    color: var(--text-secondary); font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+  }
+  .ps-tags {
+    display: flex; flex-wrap: wrap; gap: 0.4rem;
+  }
+  .ps-tag {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.25rem 0.7rem;
+    font-size: 0.76rem; font-weight: 500;
+    color: var(--text-secondary);
+    display: inline-flex; align-items: center; gap: 0.35rem;
+  }
+  .ps-tag .tag-count {
+    background: var(--ag-soft); color: var(--ag-color);
+    border-radius: 999px;
+    padding: 0.05rem 0.4rem;
+    font-size: 0.7rem; font-weight: 700;
+  }
+  .ps-empty {
+    color: var(--text-muted); font-style: italic; font-size: 0.85rem;
+  }
+  .ps-mini-table {
+    width: 100%; border-collapse: collapse; font-size: 0.83rem;
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 6px; overflow: hidden;
+  }
+  .ps-mini-table th, .ps-mini-table td {
+    padding: 0.5rem 0.75rem; text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  .ps-mini-table th {
+    background: var(--bg-section); font-weight: 700;
+    color: var(--text-secondary); font-size: 0.74rem;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .ps-mini-table tr:last-child td { border-bottom: none; }
+  .ps-mini-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* Failed card variant */
+  .ps-card.failed { border-left-color: var(--err); }
+  .ps-card.failed .ps-card-icon {
+    background: var(--err-soft); color: var(--err);
+  }
+  .ps-card.failed .ps-card-badge { background: var(--err); }
+  .ps-error-msg {
+    background: var(--err-soft); border-left: 3px solid var(--err);
+    padding: 0.65rem 0.95rem; border-radius: 4px;
+    color: var(--err); font-size: 0.85rem;
+    line-height: 1.5;
+  }
+
+  /* Color cycling */
+  .ag-1 { --ag-color: var(--agent-1); --ag-soft: var(--agent-1-soft); }
+  .ag-2 { --ag-color: var(--agent-2); --ag-soft: var(--agent-2-soft); }
+  .ag-3 { --ag-color: var(--agent-3); --ag-soft: var(--agent-3-soft); }
+  .ag-4 { --ag-color: var(--agent-4); --ag-soft: var(--agent-4-soft); }
+  .ag-5 { --ag-color: var(--agent-5); --ag-soft: var(--agent-5-soft); }
+
+  /* ─────────────────────────────────────────────────────────────────
+   * Consolidated Validation view (with merged Workbook block)
+   * ───────────────────────────────────────────────────────────────── */
+  .validation-section {
+    border: 1px solid var(--border); border-radius: 6px;
+    margin-bottom: 0.5rem; overflow: hidden;
+    background: var(--bg-card);
+  }
+  .validation-section-header {
+    padding: 0.85rem 1.15rem; cursor: pointer;
+    display: flex; justify-content: space-between; align-items: center;
+    background: var(--bg-card); user-select: none;
+    font-weight: 600; font-size: 0.92rem; color: var(--text-primary);
+    transition: background 0.15s;
+    border-left: 3px solid transparent;
+    gap: 1rem;
+  }
+  .validation-section-header:hover { background: var(--bg-section); }
+  .validation-section-header .arrow {
+    transition: transform 0.15s; color: var(--text-muted); flex-shrink: 0;
+  }
+  .validation-section.open .validation-section-header .arrow {
+    transform: rotate(180deg);
+  }
+  .validation-section-summary {
+    color: var(--text-secondary); font-weight: 400;
+    font-size: 0.85rem;
+    margin-left: auto; margin-right: 0.85rem;
+    text-align: right;
+  }
+  .validation-section-body {
+    display: none; padding: 1rem 1.15rem; background: var(--bg-card);
+    border-top: 1px solid var(--border);
+  }
+  .validation-section.open .validation-section-body { display: block; }
+  .validation-section.has-review .validation-section-header {
+    border-left-color: var(--warn);
+  }
+  .validation-section.is-clean .validation-section-header {
+    border-left-color: var(--ok);
+  }
+
+  .v-table {
+    width: 100%; border-collapse: collapse; font-size: 0.85rem;
+  }
+  .v-table th, .v-table td {
+    padding: 0.55rem 0.75rem; text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  .v-table th {
+    background: var(--bg-section); font-weight: 700;
+    color: var(--text-secondary); font-size: 0.74rem;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .v-table tr:last-child td { border-bottom: none; }
+  .v-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .v-table .center { text-align: center; }
+  .v-table .flag-critical {
+    color: var(--err); font-weight: 700; font-size: 0.78rem;
+  }
+
+  /* Section divider above the master workbook block — visually separates
+     the validation collapsibles above from the workbook deliverable below. */
+  .mwb-section-divider {
+    margin: 2rem 0 1rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border);
+    display: flex; align-items: center; gap: 0.6rem;
+  }
+  .mwb-section-divider-label {
+    font-size: 0.74rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--text-secondary);
+  }
+  .mwb-section-divider-line {
+    flex: 1; height: 1px; background: var(--border);
+  }
+
+  /* Master Workbook block (merged into Consolidated view) — slight
+     prominence treatment so the workbook reads as the deliverable rather
+     than as a footer card. Subtle green tint + 3px green left border. */
+  .master-workbook-card {
+    background: #F6FDF8;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--ok);
+    border-radius: var(--radius);
+    padding: 1.65rem 1.75rem;
+    margin-top: 0;
+    box-shadow: var(--shadow);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+  }
+  .mwb-left { min-width: 0; }
+  .mwb-icon {
+    width: 72px; height: 72px;
+    background: var(--ok-soft);
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 1.1rem;
+  }
+  .mwb-icon svg { width: 36px; height: 36px; color: var(--ok); }
+  .mwb-left h3 {
+    font-size: 1.4rem; font-weight: 700;
+    color: var(--text-primary); margin: 0 0 0.45rem;
+    letter-spacing: -0.015em;
+  }
+  .mwb-left p {
+    font-size: 0.92rem; color: var(--text-secondary);
+    margin: 0 0 1.2rem;
+    line-height: 1.55;
+  }
+  .mwb-success-strip {
+    background: var(--ok-soft);
+    border: 1px solid #BBF7D0;
+    border-radius: 6px;
+    padding: 0.65rem 0.9rem;
+    margin-top: 0.85rem;
+    font-size: 0.82rem;
+    display: flex; align-items: center; gap: 0.55rem;
+  }
+  .mwb-success-strip svg { width: 16px; height: 16px; flex-shrink: 0; color: var(--ok); }
+  .mwb-success-strip strong { color: var(--ok); }
+  .mwb-success-strip .meta-text { color: var(--text-secondary); margin-left: 0.4rem; }
+  .mwb-right h4 {
+    font-size: 1rem; font-weight: 700;
+    color: var(--text-primary); margin: 0 0 0.95rem;
+    letter-spacing: -0.01em;
+  }
+  .mwb-sheet-list {
+    display: flex; flex-direction: column; gap: 0.5rem;
+  }
+  .mwb-sheet-row {
+    display: flex; align-items: center; gap: 0.85rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.65rem 0.95rem;
+  }
+  .mwb-sheet-icon {
+    width: 28px; height: 28px;
+    border-radius: 5px;
+    background: var(--bg-section);
+    color: var(--brand-blue);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .mwb-sheet-icon svg { width: 16px; height: 16px; }
+  .mwb-sheet-info {
+    flex: 1; min-width: 0;
+  }
+  .mwb-sheet-name {
+    font-size: 0.88rem; font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.1rem;
+  }
+  .mwb-sheet-desc {
+    font-size: 0.76rem; color: var(--text-secondary);
+    line-height: 1.4;
+  }
+  .mwb-sheet-rows {
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.72rem; font-weight: 600;
+    border: 1px solid var(--border);
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  /* ─────────────────────────────────────────────────────────────────
+   * Technical view
+   * ───────────────────────────────────────────────────────────────── */
+  .tech-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+  }
+  .tech-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 0.75rem 1rem;
+    background: var(--bg-section);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.88rem;
+  }
+  .tech-row .lbl { color: var(--text-secondary); }
+  .tech-row .val {
+    font-weight: 700; font-family: "SF Mono", "Menlo", monospace;
+    font-size: 0.85rem; color: var(--text-primary);
+  }
+
+  /* ─────────────────────────────────────────────────────────────────
+   * Banners, loading
+   * ───────────────────────────────────────────────────────────────── */
+  .banner {
+    padding: 0.75rem 1rem; border-radius: 6px;
+    margin-bottom: 1rem; display: none; font-size: 0.88rem;
+  }
+  .banner.show { display: block; }
+  .banner.error { background: var(--err-soft); color: var(--err); border-left: 3px solid var(--err); }
+  .banner.warn  { background: var(--warn-soft); color: var(--warn); border-left: 3px solid var(--warn); }
+
+  .loading {
+    text-align: center; padding: 4rem 1rem; display: none;
+  }
+  .loading.show { display: block; }
+  .spinner {
+    width: 40px; height: 40px;
+    border: 3px solid var(--border); border-top-color: var(--brand-blue);
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+    margin: 0 auto 1.25rem;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-text { font-weight: 700; color: var(--text-primary); font-size: 1.05rem; }
+  .loading-sub  { color: var(--text-muted); font-size: 0.88rem; margin-top: 0.4rem; }
+
+  /* ─────────────────────────────────────────────────────────────────
+   * Responsive
+   * ───────────────────────────────────────────────────────────────── */
+  @media (max-width: 1024px) {
+    .app-shell { grid-template-columns: 1fr; }
+    .sidebar {
+      position: fixed; top: var(--header-height); left: 0;
+      width: 260px; z-index: 50;
+      transform: translateX(-100%);
+      transition: transform 0.2s;
+      box-shadow: var(--shadow-lg);
+    }
+    .sidebar.open { transform: translateX(0); }
+    .hamburger { display: flex; }
+    .kpi-grid { grid-template-columns: repeat(3, 1fr); }
+    .glance-row { grid-template-columns: repeat(3, 1fr); }
+    .vs-grid-4 { grid-template-columns: repeat(2, 1fr); }
+    .upload-grid { grid-template-columns: 1fr; }
+    .master-workbook-card { grid-template-columns: 1fr; gap: 1.5rem; }
+    .ps-card-head {
+      grid-template-columns: auto 1fr;
+      gap: 0.85rem;
+    }
+    .ps-status-pill, .ps-card-download, .ps-chevron {
+      grid-column: 2; justify-self: start;
+    }
+    .ps-metrics { grid-template-columns: repeat(3, 1fr); }
+  }
+  @media (max-width: 640px) {
+    .main { padding: 1rem; }
+    .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+    .glance-row { grid-template-columns: repeat(2, 1fr); }
+    .vs-grid-4 { grid-template-columns: 1fr; }
+    .ps-metrics { grid-template-columns: repeat(2, 1fr); }
+    .field-row { grid-template-columns: 1fr; gap: 0.4rem; }
+    .tech-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+
+<body>
+
+<!-- ─── Header (always visible) ─── -->
+<header>
+  <div class="header-inner">
+    <div class="header-left">
+      <button class="hamburger" id="hamburger" aria-label="Toggle navigation">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="3" y1="6" x2="21" y2="6"/>
+          <line x1="3" y1="12" x2="21" y2="12"/>
+          <line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+      </button>
+      <div class="brand">
+        <div class="brand-icon">P</div>
+        <div class="brand-text">
+          <h1>PREPARE Core v1.1</h1>
+          <div class="subtitle">Statement Reconciliation Workspace</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="header-status" id="header-status-area" style="display: none;">
+      <span class="status-pill" id="header-status-pill">
+        <span class="dot"></span>
+        <span id="header-status-label">Success</span>
+      </span>
+      <div class="header-meta">
+        <div class="label">Data refreshed</div>
+        <div id="header-timestamp">—</div>
+      </div>
+      <a href="#" class="btn-header-download disabled" id="header-download-link">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        Workbook Download
+      </a>
+    </div>
+  </div>
+</header>
+
+<!-- ─── App shell ─── -->
+<div class="app-shell no-sidebar" id="app-shell">
+
+  <!-- Sidebar (hidden in upload mode) -->
+  <aside class="sidebar" id="sidebar" style="display: none;">
+    <div class="nav-section-label">Navigate</div>
+    <ul class="nav-list" id="nav-list">
+      <li><a class="nav-item" data-route="workspace" href="#workspace">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+             <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+             <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></span>
+        Workspace
+      </a></li>
+      <li><a class="nav-item" data-route="per-statement" href="#per-statement">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+             <polyline points="14 2 14 8 20 8"/>
+             <line x1="16" y1="13" x2="8" y2="13"/>
+             <line x1="16" y1="17" x2="8" y2="17"/></svg></span>
+        Per-Statement
+        <span class="nav-count" id="nav-count-statements">0</span>
+      </a></li>
+      <li><a class="nav-item" data-route="consolidated" href="#consolidated">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
+        Consolidated Validation
+        <span class="nav-count" id="nav-count-validation">0</span>
+      </a></li>
+      <li><a class="nav-item" data-route="technical" href="#technical">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+             <circle cx="12" cy="12" r="3"/>
+             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
+        Technical Details
+      </a></li>
+    </ul>
+
+    <div class="sidebar-footer">
+      <button class="new-run-link" onclick="resetWorkspace()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="19" y1="12" x2="5" y2="12"/>
+          <polyline points="12 19 5 12 12 5"/>
+        </svg>
+        New Run
+      </button>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <main class="main upload" id="main">
+
+    <!-- ────────── UPLOAD VIEW (entry screen) ────────── -->
+    <section id="upload-section">
+      <h1 class="upload-page-title">Statement Reconciliation Workspace</h1>
+      <p class="upload-page-subtitle">
+        Upload one or more bank or credit card statements to extract, normalize, and aggregate
+        vendor payments — producing accountant-grade Excel workbooks with cross-statement
+        validation ready for review before 1099 preparation.
+      </p>
+
+      <div class="banner" id="upload-error-banner"></div>
+
+      <div class="upload-grid">
+        <!-- Left column: PDFs -->
+        <div class="card">
+          <h2>Statement PDFs</h2>
+          <div class="pdf-list" id="pdf-list"></div>
+          <button type="button" class="add-pdf-btn" id="add-pdf-btn">+ Add PDF Statement</button>
+          <input type="file" id="pdf-file-input" accept="application/pdf" multiple style="display:none">
+          <div class="hint">
+            Upload one or more bank / credit card statements. Min 1, max 10 PDFs per run.
+          </div>
+        </div>
+
+        <!-- Right column: CSV + config -->
+        <div class="card">
+          <h2>Configuration</h2>
+
+          <div style="margin-bottom: 1rem;">
+            <label style="font-weight: 600; font-size: 0.85rem; color: var(--text-primary); display: block; margin-bottom: 0.4rem;">
+              Known Vendor List (CSV) — optional
+            </label>
+            <label class="file-drop" id="csv-drop">
+              <input type="file" id="csv-input" accept=".csv">
+              <div class="file-drop-label" id="csv-label">Click to select CSV</div>
+              <div class="file-drop-sub" id="csv-sub">or drag and drop</div>
+            </label>
+            <div class="hint">
+              Improves vendor name matching. First column should be canonical vendor names.
+            </div>
+          </div>
+
+          <div class="field-row">
+            <label for="lang-select">Output Language</label>
+            <select id="lang-select">
+              <option value="English" selected>English</option>
+              <option value="한국어">한국어 (Korean)</option>
+              <option value="Español">Español (Spanish)</option>
+              <option value="中文">中文 (Chinese)</option>
+              <option value="繁體中文">繁體中文 (Traditional Chinese)</option>
+              <option value="Français">Français (French)</option>
+              <option value="日本語">日本語 (Japanese)</option>
+              <option value="Deutsch">Deutsch (German)</option>
+              <option value="Русский">Русский (Russian)</option>
+              <option value="العربية">العربية (Arabic)</option>
+            </select>
+          </div>
+
+          <div class="field-row">
+            <label for="engine-select">Processing Engine</label>
+            <select id="engine-select">
+              <option value="rule_based">Rule-based — Fast · Free</option>
+              <option value="ai_assisted">AI-assisted — Single agent</option>
+              <option value="multi_agent" selected>Multi-agent — Parallel + cross-validation</option>
+            </select>
+          </div>
+
+          <div class="advanced-toggle" id="advanced-toggle">Advanced (extraction model override)</div>
+          <div class="advanced-content" id="advanced-content">
+            <div class="advanced-warn">
+              ⚠ Default Haiku is recommended. Larger models risk hitting rate limits and significantly increase cost.
+            </div>
+            <div class="field-row">
+              <label for="extraction-model-select">Extraction Model</label>
+              <select id="extraction-model-select">
+                <option value="claude-haiku-4-5-20251001" selected>Haiku — recommended</option>
+                <option value="claude-sonnet-4-6">Sonnet — higher accuracy</option>
+                <option value="claude-opus-4-7">Opus — highest cost</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="actions-bar">
+            <button id="process-btn" class="btn-primary" disabled>Add a PDF to start</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ────────── LOADING ────────── -->
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <div class="loading-text" id="loading-text">Processing your statements…</div>
+      <div class="loading-sub">This may take 10–60 seconds depending on engine and PDF count.</div>
+    </div>
+
+    <!-- ────────── RESULTS (4 views) ────────── -->
+    <section id="results-section" style="display: none;">
+
+      <div class="banner" id="warn-banner"></div>
+
+      <!-- ─── View: Workspace ─── -->
+      <div class="view" id="view-workspace">
+        <div class="view-title-row">
+          <div class="view-title-block">
+            <div class="view-title-icon" style="--vt-color: var(--brand-blue); --vt-soft: var(--brand-blue-soft);">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+                <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+              </svg>
+            </div>
+            <div class="view-title">
+              <h1>Workspace</h1>
+              <div class="view-subtitle">
+                Run summary, processing overview, validation rollup, and the workbook deliverable.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- KPI cards -->
+        <div class="kpi-grid" id="kpi-grid"></div>
+
+        <!-- Processing at a Glance -->
+        <div class="glance-strip">
+          <div class="glance-title">Processing at a Glance</div>
+          <div class="glance-row" id="glance-row"></div>
+        </div>
+
+        <!-- Validation overview (4 tiles) -->
+        <div class="vs-grid-4" id="vs-grid"></div>
+
+        <!-- Workbook CTA -->
+        <div class="workbook-cta" id="workbook-cta-block" style="margin-top: 1rem;">
+          <div class="workbook-cta-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
+          </div>
+          <div class="workbook-cta-text">
+            <h3>Master Workbook Ready</h3>
+            <p id="workspace-workbook-summary">5 sheets · consolidated reconciliation deliverable</p>
+          </div>
+          <a class="btn-download disabled" id="workspace-download-link" download>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Download Workbook
+          </a>
+        </div>
+      </div>
+
+      <!-- ─── View: Per-Statement ─── -->
+      <div class="view" id="view-per-statement">
+        <div class="view-title-row">
+          <div class="view-title-block">
+            <div class="view-title-icon" style="--vt-color: var(--ok); --vt-soft: var(--ok-soft);">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="16" y1="13" x2="8" y2="13"/>
+                <line x1="16" y1="17" x2="8" y2="17"/>
+              </svg>
+            </div>
+            <div class="view-title">
+              <h1>Per-Statement Review</h1>
+              <div class="view-subtitle">
+                One card per processed statement. Expand to see flagged vendors and validation detail.
+              </div>
+            </div>
+          </div>
+          <div class="view-title-controls">
+            <span class="ctrl-btn" style="cursor: default;">
+              Sort by:
+              <select id="ps-sort">
+                <option value="filename">File Name</option>
+                <option value="review">Review Count ↓</option>
+                <option value="amount">Total Amount ↓</option>
+              </select>
+            </span>
+            <button class="ctrl-btn" id="expand-all-btn">Expand All</button>
+          </div>
+        </div>
+        <div id="agent-cards"></div>
+      </div>
+
+      <!-- ─── View: Consolidated Validation (with merged Workbook block) ─── -->
+      <div class="view" id="view-consolidated">
+        <div class="view-title-row">
+          <div class="view-title-block">
+            <div class="view-title-icon" style="--vt-color: var(--purple); --vt-soft: var(--purple-soft);">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              </svg>
+            </div>
+            <div class="view-title">
+              <h1>Consolidated Validation &amp; Workbook</h1>
+              <div class="view-subtitle">
+                Cross-statement findings and the master Excel deliverable.
+              </div>
+            </div>
+          </div>
+          <div class="view-title-controls">
+            <button class="ctrl-btn" id="cv-expand-all-btn">Expand All</button>
+          </div>
+        </div>
+
+        <!-- 4 validation summary tiles -->
+        <div class="vs-grid-4" id="cv-tiles" style="margin-bottom: 1rem;"></div>
+
+        <!-- 4 collapsibles -->
+        <div id="validation-content"></div>
+
+        <!-- Section divider — separates validation findings from the deliverable -->
+        <div class="mwb-section-divider">
+          <div class="mwb-section-divider-label">Master Deliverable</div>
+          <div class="mwb-section-divider-line"></div>
+        </div>
+
+        <!-- Master Workbook block -->
+        <div class="master-workbook-card" id="master-workbook-card">
+          <div class="mwb-left">
+            <div class="mwb-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="16" y1="13" x2="8" y2="13"/>
+                <line x1="16" y1="17" x2="8" y2="17"/>
+              </svg>
+            </div>
+            <h3>Master Workbook</h3>
+            <p>Consolidated reconciliation results in a single Excel file. Opens on the Executive Summary sheet by default.</p>
+            <a class="btn-download disabled" id="cv-download-link" download>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Download Master Workbook
+            </a>
+            <div class="mwb-success-strip" id="mwb-success-strip" style="display: none;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+              <span><strong>Workbook generated successfully</strong></span>
+              <span class="meta-text" id="mwb-meta-text">—</span>
+            </div>
+          </div>
+          <div class="mwb-right">
+            <h4>Workbook Sheets</h4>
+            <div class="mwb-sheet-list" id="mwb-sheet-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── View: Technical Details ─── -->
+      <div class="view" id="view-technical">
+        <div class="view-title-row">
+          <div class="view-title-block">
+            <div class="view-title-icon" style="--vt-color: var(--neutral); --vt-soft: var(--neutral-soft);">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+              </svg>
+            </div>
+            <div class="view-title">
+              <h1>Technical Details</h1>
+              <div class="view-subtitle">
+                Engine, model, language, processing time, and cost for this run.
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="tech-grid" id="technical-content"></div>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+</div>
+
+<script>
+  /* ─────────────────────────────────────────────────────────────────
+   * PREPARE Core v1.1 frontend — landscape workspace layout
+   * 4-item sidebar, hash-based routing, dedicated views.
+   * Renders against ProcessResponse v1.0 schema (unchanged contract).
+   * ───────────────────────────────────────────────────────────────── */
+
+  const EXPECTED_SCHEMA_VERSION = "1.0";
+  const VALID_ROUTES = ["workspace", "per-statement", "consolidated", "technical"];
+  // Canonical sheet count for the v1.1 master workbook. The frontend uses
+  // this as the source of truth so sheet displays stay correct even if the
+  // backend's WorkbookInfo.sheet_count is stale. The actual sheet list is
+  // built in renderMasterWorkbookCard().
+  const CANONICAL_SHEET_COUNT = 5;
+
+  // ─── Element refs ───
+  const pdfFileInput   = document.getElementById('pdf-file-input');
+  const pdfList        = document.getElementById('pdf-list');
+  const addPdfBtn      = document.getElementById('add-pdf-btn');
+  const csvInput       = document.getElementById('csv-input');
+  const csvDrop        = document.getElementById('csv-drop');
+  const csvLabel       = document.getElementById('csv-label');
+  const csvSub         = document.getElementById('csv-sub');
+  const langSelect     = document.getElementById('lang-select');
+  const engineSelect   = document.getElementById('engine-select');
+  const extractionSel  = document.getElementById('extraction-model-select');
+  const advancedToggle = document.getElementById('advanced-toggle');
+  const advancedContent= document.getElementById('advanced-content');
+  const processBtn     = document.getElementById('process-btn');
+  const uploadSection  = document.getElementById('upload-section');
+  const resultsSection = document.getElementById('results-section');
+  const loading        = document.getElementById('loading');
+  const loadingText    = document.getElementById('loading-text');
+  const uploadErrorBanner = document.getElementById('upload-error-banner');
+  const warnBanner     = document.getElementById('warn-banner');
+  const headerStatusArea = document.getElementById('header-status-area');
+  const sidebar        = document.getElementById('sidebar');
+  const appShell       = document.getElementById('app-shell');
+  const main           = document.getElementById('main');
+  const hamburger      = document.getElementById('hamburger');
+
+  // State
+  let pdfFiles = [];
+  let lastResponse = null;
+  let cardsExpanded = {};      // per-statement expansion state by index
+  let allExpandedToggle = false;
+  let cvAllExpandedToggle = false;
+
+  /* ─── Inline SVG icons ─────────────────────────────────────────── */
+  const ICONS = {
+    file: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
+    users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+    dollar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
+    alert: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+    flag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>',
+    bot: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2" ry="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/></svg>',
+    check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="9 12 12 15 16 10"/></svg>',
+    clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+    sheets: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>',
+    shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
+    info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
+    chevron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>',
+    download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+  };
+
+  /* ─── PDF list management ─── */
+  addPdfBtn.addEventListener('click', () => pdfFileInput.click());
+
+  pdfFileInput.addEventListener('change', () => {
+    for (const file of pdfFileInput.files) {
+      if (pdfFiles.length >= 10) {
+        alert('Maximum 10 PDFs per run.');
+        break;
+      }
+      pdfFiles.push(file);
+    }
+    pdfFileInput.value = '';
+    renderPdfList();
+    updateProcessBtn();
+  });
+
+  function renderPdfList() {
+    pdfList.innerHTML = pdfFiles.map((f, i) => `
+      <div class="pdf-slot">
+        <span class="pdf-slot-icon">📄</span>
+        <span class="pdf-slot-name">${escapeHtml(f.name)}</span>
+        <span class="pdf-slot-size">${(f.size / 1024).toFixed(1)} KB</span>
+        <button class="pdf-slot-remove" type="button" onclick="removePdf(${i})" title="Remove">✕</button>
+      </div>
+    `).join('');
+    addPdfBtn.disabled = pdfFiles.length >= 10;
+    addPdfBtn.textContent = pdfFiles.length === 0
+      ? '+ Add PDF Statement'
+      : `+ Add Another PDF Statement (${pdfFiles.length}/10)`;
+  }
+
+  window.removePdf = function(idx) {
+    pdfFiles.splice(idx, 1);
+    renderPdfList();
+    updateProcessBtn();
+  };
+
+  /* ─── CSV upload ─── */
+  csvInput.addEventListener('change', () => {
+    if (csvInput.files.length > 0) {
+      const f = csvInput.files[0];
+      csvLabel.textContent = f.name;
+      csvSub.textContent = `${(f.size / 1024).toFixed(1)} KB · ready`;
+      csvDrop.classList.add('has-file');
+    } else {
+      csvLabel.textContent = 'Click to select CSV';
+      csvSub.textContent = 'or drag and drop';
+      csvDrop.classList.remove('has-file');
+    }
+  });
+
+  /* ─── Engine change ─── */
+  engineSelect.addEventListener('change', () => {
+    const e = engineSelect.value;
+    advancedToggle.style.display = (e === 'rule_based') ? 'none' : 'inline-block';
+    if (e === 'rule_based') {
+      advancedContent.classList.remove('open');
+      advancedToggle.classList.remove('open');
+    }
+  });
+  advancedToggle.addEventListener('click', () => {
+    advancedToggle.classList.toggle('open');
+    advancedContent.classList.toggle('open');
+  });
+
+  function updateProcessBtn() {
+    const n = pdfFiles.length;
+    processBtn.disabled = n === 0;
+    if (n === 0)      processBtn.textContent = 'Add a PDF to start';
+    else if (n === 1) processBtn.textContent = 'Process 1 Statement';
+    else              processBtn.textContent = `Process ${n} Statements`;
+  }
+
+  processBtn.addEventListener('click', runProcess);
+
+  async function runProcess() {
+    uploadSection.style.display = 'none';
+    loading.classList.add('show');
+    uploadErrorBanner.classList.remove('show');
+    warnBanner.classList.remove('show');
+
+    const engine = engineSelect.value;
+    const engineLabel = engine === 'rule_based' ? 'rule-based pipeline'
+                      : engine === 'ai_assisted' ? 'AI-assisted agent'
+                      : 'multi-agent + validation';
+    loadingText.textContent = `Running ${engineLabel}…`;
+
+    const fd = new FormData();
+    pdfFiles.forEach(f => fd.append('pdf_files', f));
+    if (csvInput.files[0]) fd.append('vendor_list', csvInput.files[0]);
+    fd.append('engine', engine);
+    fd.append('extraction_model', extractionSel.value);
+    fd.append('language', langSelect.value);
+
+    try {
+      const res = await fetch('/api/process', { method: 'POST', body: fd });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
+        throw new Error(err.detail || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+
+      if (data.schema_version !== EXPECTED_SCHEMA_VERSION) {
+        console.warn(
+          `[PREPARE] Schema version mismatch: frontend expects ${EXPECTED_SCHEMA_VERSION}, ` +
+          `received ${data.schema_version}. Some fields may not render correctly.`
+        );
+      }
+
+      loading.classList.remove('show');
+      lastResponse = data;
+      showResults(data);
+    } catch (err) {
+      loading.classList.remove('show');
+      uploadSection.style.display = 'block';
+      uploadErrorBanner.textContent = 'Error: ' + err.message;
+      uploadErrorBanner.classList.add('show');
+    }
+  }
+
+  /* ─── Show results: switch to landscape mode, render all views ─── */
+  function showResults(data) {
+    // Switch app shell into "with sidebar" mode
+    appShell.classList.remove('no-sidebar');
+    main.classList.remove('upload');
+    sidebar.style.display = 'flex';
+    resultsSection.style.display = 'block';
+
+    renderHeaderStatus(data);
+    renderRunErrors(data.errors);
+    renderKpiGrid(data.summary);
+    renderGlanceStrip(data);
+    renderValidationOverview(data);
+    renderWorkbookCTA(data);
+    renderConsolidatedView(data);
+    renderAgentCards(data.statements, data.validation);
+    renderTechnical(data.technical);
+    updateNavCounts(data);
+
+    // Default route on results-arrival
+    if (!window.location.hash || !VALID_ROUTES.includes(window.location.hash.slice(1))) {
+      window.location.hash = '#workspace';
+    } else {
+      activateRoute(window.location.hash.slice(1));
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  /* ─── Hash-based routing ─── */
+  function activateRoute(route) {
+    if (!VALID_ROUTES.includes(route)) route = 'workspace';
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    const view = document.getElementById('view-' + route);
+    const nav  = document.querySelector(`.nav-item[data-route="${route}"]`);
+    if (view) view.classList.add('active');
+    if (nav)  nav.classList.add('active');
+    if (window.innerWidth <= 1024) sidebar.classList.remove('open');
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }
+
+  window.addEventListener('hashchange', () => {
+    if (!lastResponse) return;
+    activateRoute(window.location.hash.slice(1));
+  });
+
+  hamburger.addEventListener('click', () => sidebar.classList.toggle('open'));
+
+  /* ─── Header status ─── */
+  function renderHeaderStatus(data) {
+    const successful = data.summary.successful_count || 0;
+    const failed     = data.summary.failed_count || 0;
+    let statusClass = 'ok', statusLabel = 'Success';
+    if (failed > 0 && successful === 0)      { statusClass = 'failed';  statusLabel = 'Failed'; }
+    else if (failed > 0)                     { statusClass = 'partial'; statusLabel = 'Partial'; }
+    const pill = document.getElementById('header-status-pill');
+    pill.className = 'status-pill ' + statusClass;
+    document.getElementById('header-status-label').textContent = statusLabel;
+    const ts = data.workbook && data.workbook.generated_at
+      ? formatTimestamp(data.workbook.generated_at) : '—';
+    document.getElementById('header-timestamp').textContent = ts;
+    const link = document.getElementById('header-download-link');
+    if (data.workbook && data.workbook.file_id) {
+      link.href = '/api/download/' + encodeURI(data.workbook.file_id);
+      link.classList.remove('disabled');
+    } else {
+      link.removeAttribute('href');
+      link.classList.add('disabled');
+    }
+    headerStatusArea.style.display = 'flex';
+  }
+
+  function renderRunErrors(errors) {
+    if (!errors || errors.length === 0) return;
+    const messages = errors.map(e => `${e.stage}: ${e.message}`).join(' · ');
+    warnBanner.textContent = `Run completed with issues — ${messages}`;
+    warnBanner.classList.add('show');
+  }
+
+  function updateNavCounts(data) {
+    document.getElementById('nav-count-statements').textContent = (data.statements || []).length;
+    const v = data.validation || {};
+    const totalFindings =
+      (v.cross_statement_matches || []).length +
+      (v.name_variants || []).length +
+      (v.discrepancy_alerts || []).length +
+      (v.near_threshold_vendors || []).length;
+    document.getElementById('nav-count-validation').textContent = totalFindings;
+  }
+
+  /* ─── KPI grid ─── */
+  function renderKpiGrid(s) {
+    const grid = document.getElementById('kpi-grid');
+    const fmt = (n) => Number(n || 0).toLocaleString();
+    const fmtCurrency = (n) => '$' + Number(n || 0).toLocaleString('en-US',
+                              {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    const cards = [
+      { cls: 'k-blue',   icon: ICONS.file,   label: 'Total Transactions',
+        value: fmt(s.total_transactions),   sub: 'Across all statements' },
+      { cls: 'k-green',  icon: ICONS.users,  label: 'Unique Vendors',
+        value: fmt(s.unique_vendors),       sub: 'Unique across all statements' },
+      { cls: 'k-purple', icon: ICONS.dollar, label: 'Total Reconciled',
+        value: fmtCurrency(s.total_reconciled), sub: 'Total amount matched' },
+      { cls: 'k-amber',  icon: ICONS.alert,  label: 'Over $600 (1099)',
+        value: fmt(s.vendors_over_threshold), sub: 'Potential 1099 candidates' },
+      { cls: 'k-red',    icon: ICONS.flag,   label: 'Review Needed',
+        value: fmt(s.review_needed_count),  sub: 'Require human review' },
+    ];
+    grid.innerHTML = cards.map(c => `
+      <div class="kpi-card ${c.cls}">
+        <div class="kpi-icon">${c.icon}</div>
+        <div class="kpi-label">${c.label}</div>
+        <div class="kpi-value">${c.value}</div>
+        <div class="kpi-sublabel">${c.sub}</div>
+      </div>`).join('');
+  }
+
+  /* ─── Processing at a Glance ─── */
+  function renderGlanceStrip(data) {
+    const row = document.getElementById('glance-row');
+    const s = data.summary;
+    const t = data.technical || {};
+    const total = (s.successful_count || 0) + (s.failed_count || 0);
+    const successPct = total > 0
+      ? Math.round((s.successful_count || 0) / total * 100) : 0;
+    const procTime = t.processing_time_seconds != null
+      ? formatDuration(t.processing_time_seconds) : '—';
+    const sheets = data.workbook
+      ? Math.max(data.workbook.sheet_count || 0, CANONICAL_SHEET_COUNT)
+      : 0;
+    const agentsCompleted = (s.successful_count || 0) + (s.failed_count || 0);
+    const items = [
+      { cls: 'gi-blue',   icon: ICONS.file,   value: total,
+        label: total === 1 ? 'PDF Statement' : 'PDF Statements' },
+      { cls: 'gi-green',  icon: ICONS.bot,    value: agentsCompleted,
+        label: 'Agents Completed' },
+      { cls: 'gi-purple', icon: ICONS.check,  value: successPct + '%',
+        label: 'Processing Success' },
+      { cls: 'gi-amber',  icon: ICONS.clock,  value: procTime,
+        label: 'Total Processing Time' },
+      { cls: 'gi-blue',   icon: ICONS.sheets, value: sheets,
+        label: 'Master Workbook Sheets' },
+    ];
+    row.innerHTML = items.map(i => `
+      <div class="glance-item">
+        <div class="glance-icon ${i.cls}">${i.icon}</div>
+        <div class="glance-text">
+          <div class="glance-value">${i.value}</div>
+          <div class="glance-label">${i.label}</div>
+        </div>
+      </div>`).join('');
+  }
+
+  /* ─── Validation overview tiles (4) ─── */
+  function renderValidationOverview(data) {
+    const v = data.validation || {};
+    const s = data.summary || {};
+    const tiles = [
+      { cls: 'vs-green',  icon: ICONS.users,  value: (v.cross_statement_matches || []).length,
+        label: 'Cross-Statement Matches', desc: 'Vendors matched across multiple statements' },
+      { cls: 'vs-blue',   icon: ICONS.users,  value: (v.name_variants || []).length,
+        label: 'Name Variant Flags', desc: 'Potential duplicate vendors with different names' },
+      { cls: 'vs-amber',  icon: ICONS.alert,  value: (v.discrepancy_alerts || []).length,
+        label: 'Discrepancy Alerts', desc: 'Possible extraction or amount mismatches' },
+      { cls: 'vs-red',    icon: ICONS.flag,   value: (s.review_needed_count || 0),
+        label: 'Review Needed', desc: 'Total vendors requiring human review' },
+    ];
+    const html = tiles.map(t => `
+      <div class="vs-tile ${t.cls}">
+        <div class="vs-tile-icon">${t.icon}</div>
+        <div class="vs-tile-text">
+          <div class="vs-tile-value">${t.value}</div>
+          <div class="vs-tile-label">${t.label}</div>
+          <div class="vs-tile-desc">${t.desc}</div>
+        </div>
+      </div>`).join('');
+    document.getElementById('vs-grid').innerHTML = html;
+
+    // Same 4 tiles on Consolidated view (we use the V categories there too,
+    // swapping Review Needed for Near-Threshold per spec — that's the
+    // "matches the 4 collapsibles" framing)
+    const cvTiles = [
+      { cls: 'vs-green',  icon: ICONS.users,  value: (v.cross_statement_matches || []).length,
+        label: 'Cross-Statement Matches', desc: 'Vendors matched across multiple statements' },
+      { cls: 'vs-blue',   icon: ICONS.users,  value: (v.name_variants || []).length,
+        label: 'Name Variant Flags', desc: 'Potential duplicate vendors with different names' },
+      { cls: 'vs-amber',  icon: ICONS.alert,  value: (v.discrepancy_alerts || []).length,
+        label: 'Discrepancy Alerts', desc: 'Possible extraction or amount mismatches' },
+      { cls: 'vs-purple', icon: ICONS.dollar, value: (v.near_threshold_vendors || []).length,
+        label: 'Near-Threshold Vendors', desc: 'Vendors close to the $600 1099 threshold' },
+    ];
+    document.getElementById('cv-tiles').innerHTML = cvTiles.map(t => `
+      <div class="vs-tile ${t.cls}">
+        <div class="vs-tile-icon">${t.icon}</div>
+        <div class="vs-tile-text">
+          <div class="vs-tile-value">${t.value}</div>
+          <div class="vs-tile-label">${t.label}</div>
+          <div class="vs-tile-desc">${t.desc}</div>
+        </div>
+      </div>`).join('');
+  }
+
+  /* ─── Workspace workbook CTA ─── */
+  function renderWorkbookCTA(data) {
+    const wb = data.workbook;
+    const link = document.getElementById('workspace-download-link');
+    const summary = document.getElementById('workspace-workbook-summary');
+    if (wb && wb.file_id) {
+      link.href = '/api/download/' + encodeURI(wb.file_id);
+      link.classList.remove('disabled');
+      // v1.1: workbook always has 5 sheets. Display count from canonical
+      // value, not from the (possibly stale) backend sheet_count field.
+      const displayCount = Math.max(wb.sheet_count || 0, CANONICAL_SHEET_COUNT);
+      summary.textContent = `${displayCount} sheet${displayCount !== 1 ? 's' : ''} · consolidated reconciliation deliverable · generated ${formatTimestamp(wb.generated_at || '')}`;
+    } else {
+      link.removeAttribute('href');
+      link.classList.add('disabled');
+      summary.textContent = 'Workbook not generated for this run.';
+    }
+  }
+
+  /* ─────────────────────────────────────────────────────────────────
+   * Per-statement view
+   * ───────────────────────────────────────────────────────────────── */
+
+  /* Build per-statement detail signals from validation findings */
+  function buildPerStatementSignals(validation) {
+    const m = {};
+    const ensure = (fname) => {
+      if (!m[fname]) m[fname] = {
+        name_variants: [], discrepancies: [], near_threshold: []
+      };
+      return m[fname];
+    };
+    if (validation) {
+      (validation.name_variants || []).forEach(nv => {
+        ensure(nv.statement_a).name_variants.push(nv);
+        ensure(nv.statement_b).name_variants.push(nv);
+      });
+      (validation.discrepancy_alerts || []).forEach(da => {
+        ensure(da.statement_a).discrepancies.push(da);
+        ensure(da.statement_b).discrepancies.push(da);
+      });
+      (validation.near_threshold_vendors || []).forEach(nt => {
+        if (nt.source && nt.source !== 'Combined') ensure(nt.source).near_threshold.push(nt);
+      });
+    }
+    return m;
+  }
+
+  function renderAgentCards(statements, validation) {
+    const container = document.getElementById('agent-cards');
+    if (!statements || statements.length === 0) {
+      container.innerHTML = '<p class="ps-empty">No statements to display.</p>';
+      return;
+    }
+    const signals = buildPerStatementSignals(validation);
+
+    // Apply current sort
+    const sortMode = document.getElementById('ps-sort').value;
+    const sorted = statements.slice().map((s, i) => ({...s, _origIdx: i}));
+    if (sortMode === 'filename') {
+      sorted.sort((a, b) => (a.original_filename || '').localeCompare(b.original_filename || ''));
+    } else if (sortMode === 'review') {
+      sorted.sort((a, b) => (b.review_needed || 0) - (a.review_needed || 0));
+    } else if (sortMode === 'amount') {
+      sorted.sort((a, b) => (b.total_amount || 0) - (a.total_amount || 0));
+    }
+
+    container.innerHTML = sorted.map((s, displayIdx) => {
+      const origIdx = s._origIdx;
+      const agentNum = origIdx + 1;
+      const colorClass = `ag-${(origIdx % 5) + 1}`;
+      const isOk = (s.status === 'success' || s.status === 'partial');
+      const isFailed = !isOk;
+      const expanded = !!cardsExpanded[origIdx];
+      const stmtSignals = signals[s.original_filename]
+        || { name_variants: [], discrepancies: [], near_threshold: [] };
+
+      // Failed card: simpler form
+      if (isFailed) {
+        return `
+          <div class="ps-card failed" id="ps-card-${origIdx}">
+            <div class="ps-card-head">
+              <div class="ps-card-icon-block">
+                <div class="ps-card-icon">${ICONS.file}</div>
+                <div class="ps-card-badge">${agentNum}</div>
+              </div>
+              <div class="ps-card-title">
+                <h3>${escapeHtml(s.original_filename)}</h3>
+                <div class="ps-card-meta">
+                  <span class="agent-tag" style="color: var(--err);">Agent ${agentNum}</span>
+                  <span class="sep">·</span>Failed
+                  ${s.failure_reason ? '<span class="sep">·</span>' + escapeHtml(s.failure_reason.replace(/_/g, ' ')) : ''}
+                </div>
+              </div>
+              <span class="ps-status-pill failed">
+                <span style="width:6px;height:6px;border-radius:50%;background:currentColor;"></span>
+                Failed
+              </span>
+              <span></span>
+              <span></span>
+            </div>
+            <div class="ps-card-body">
+              <div class="ps-error-msg">
+                <strong>Reason:</strong> ${escapeHtml(s.error_message || 'No vendor data extracted')}
+              </div>
+            </div>
+          </div>`;
+      }
+
+      const review = s.review_needed || 0;
+      const reviewParts = renderReviewSentence(s, stmtSignals);
+      const summaryClass = (review === 0 && stmtSignals.discrepancies.length === 0
+                            && stmtSignals.name_variants.length === 0)
+                           ? 'clean' : '';
+
+      // Expansion content
+      const flaggedVendors = stmtSignals.name_variants.length === 0
+                          && stmtSignals.discrepancies.length === 0
+                          && stmtSignals.near_threshold.length === 0
+                          && review === 0
+        ? null
+        : buildExpansionContent(s, stmtSignals);
+
+      return `
+        <div class="ps-card ${colorClass} ${expanded ? 'expanded' : ''}" id="ps-card-${origIdx}">
+          <div class="ps-card-head">
+            <div class="ps-card-icon-block">
+              <div class="ps-card-icon">${ICONS.file}</div>
+              <div class="ps-card-badge">${agentNum}</div>
+            </div>
+            <div class="ps-card-title">
+              <h3>${escapeHtml(s.original_filename)}</h3>
+              <div class="ps-card-meta">
+                <span class="agent-tag">Agent ${agentNum}</span>
+                <span class="sep">·</span>${(s.status || 'success').toUpperCase()}
+              </div>
+            </div>
+            <span class="ps-status-pill">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+              Success
+            </span>
+            ${s.excel_file_id
+              ? `<a class="ps-card-download" href="/api/download/${encodeURI(s.excel_file_id)}" download>
+                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                        stroke-linecap="round" stroke-linejoin="round">
+                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                     <polyline points="7 10 12 15 17 10"/>
+                     <line x1="12" y1="15" x2="12" y2="3"/>
+                   </svg>
+                   Download Excel
+                 </a>`
+              : '<span></span>'}
+            <button class="ps-chevron" onclick="toggleCard(${origIdx})" aria-label="Toggle details">
+              ${ICONS.chevron}
+            </button>
+          </div>
+          <div class="ps-card-body">
+            <div class="ps-metrics">
+              ${renderMetric('Transactions', s.transaction_count || 0)}
+              ${renderMetric('Vendors',      s.vendor_count || 0)}
+              ${renderMetric('Total Amount', '$' + Number(s.total_amount || 0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}))}
+              ${renderMetric('Review Needed', review, 'review' + (review === 0 ? ' zero' : ''))}
+              ${renderMetric('Confidence',   Math.round((s.extraction_confidence || 0) * 100) + '%')}
+            </div>
+            <div class="ps-summary-strip ${summaryClass}">
+              <span class="ps-summary-icon">${ICONS.info}</span>
+              <span><span class="label">Review</span>${escapeHtml(reviewParts)}.</span>
+            </div>
+          </div>
+          ${flaggedVendors ? `<div class="ps-card-expansion">${flaggedVendors}</div>` : ''}
+        </div>`;
+    }).join('');
+  }
+
+  function renderMetric(label, value, extraClass) {
+    return `
+      <div class="ps-metric ${extraClass || ''}">
+        <span class="ps-metric-label">${label}</span>
+        <span class="ps-metric-value">${value}</span>
+      </div>`;
+  }
+
+  function renderReviewSentence(s, signals) {
+    const review = s.review_needed || 0;
+    const over   = s.vendors_over_threshold || 0;
+    const conf   = Math.round((s.extraction_confidence || 0) * 100);
+    const parts = [];
+    parts.push(review === 0
+      ? 'No vendors flagged for review'
+      : `${review} flagged for review`);
+    if (over > 0) parts.push(`${over} over $600`);
+    if (signals.name_variants.length > 0)
+      parts.push(`${signals.name_variants.length} name variant${signals.name_variants.length > 1 ? 's' : ''}`);
+    if (signals.discrepancies.length > 0)
+      parts.push(`${signals.discrepancies.length} discrepanc${signals.discrepancies.length > 1 ? 'ies' : 'y'}`);
+    if (signals.near_threshold.length > 0)
+      parts.push(`${signals.near_threshold.length} near threshold`);
+    parts.push(`${conf}% confidence`);
+    return parts.join(' · ');
+  }
+
+  function buildExpansionContent(s, signals) {
+    const parts = [];
+
+    // Review reason tags (aggregated from signals)
+    const tags = [];
+    if (s.review_needed > 0) tags.push({ name: 'Review needed', count: s.review_needed });
+    if (s.vendors_over_threshold > 0) tags.push({ name: 'Over $600', count: s.vendors_over_threshold });
+    if (signals.name_variants.length > 0) tags.push({ name: 'Name variant', count: signals.name_variants.length });
+    if (signals.discrepancies.length > 0) tags.push({ name: 'Discrepancy', count: signals.discrepancies.length });
+    if (signals.near_threshold.length > 0) tags.push({ name: 'Near threshold', count: signals.near_threshold.length });
+
+    if (tags.length > 0) {
+      parts.push(`
+        <div class="ps-section">
+          <div class="ps-section-title">Review Reason Tags</div>
+          <div class="ps-tags">
+            ${tags.map(t => `
+              <span class="ps-tag">${escapeHtml(t.name)}<span class="tag-count">${t.count}</span></span>
+            `).join('')}
+          </div>
+        </div>`);
+    }
+
+    // Near-threshold vendors specific to this statement
+    if (signals.near_threshold.length > 0) {
+      const rows = signals.near_threshold.map(nt => {
+        const dist = nt.distance_to_threshold;
+        const distLabel = dist < 0
+          ? `<span style="color:var(--ok)">+$${Math.abs(dist).toFixed(2)}</span>`
+          : `-$${Math.abs(dist).toFixed(2)}`;
+        return `
+          <tr>
+            <td><strong>${escapeHtml(nt.vendor)}</strong></td>
+            <td class="num">$${Number(nt.total_amount).toLocaleString('en-US',{minimumFractionDigits:2})}</td>
+            <td class="num">${distLabel}</td>
+          </tr>`;
+      }).join('');
+      parts.push(`
+        <div class="ps-section">
+          <div class="ps-section-title">Near-Threshold Vendors</div>
+          <table class="ps-mini-table">
+            <thead><tr><th>Vendor</th><th class="num">Total</th><th class="num">Distance to $600</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`);
+    }
+
+    // Possible extraction discrepancies for this statement
+    if (signals.discrepancies.length > 0) {
+      const rows = signals.discrepancies.map(d => {
+        // Show "this statement vs the other"
+        const isA = d.statement_a === s.original_filename;
+        const otherStmt = isA ? d.statement_b : d.statement_a;
+        const thisAmt   = isA ? d.amount_a : d.amount_b;
+        const otherAmt  = isA ? d.amount_b : d.amount_a;
+        return `
+          <tr>
+            <td><strong>${escapeHtml(d.vendor)}</strong></td>
+            <td class="num">$${Number(thisAmt).toLocaleString('en-US',{minimumFractionDigits:2})}</td>
+            <td>${escapeHtml(otherStmt)}</td>
+            <td class="num">$${Number(otherAmt).toLocaleString('en-US',{minimumFractionDigits:2})}</td>
+            <td class="num"><span style="color:var(--err);font-weight:600;">${d.ratio.toFixed(1)}x</span></td>
+          </tr>`;
+      }).join('');
+      parts.push(`
+        <div class="ps-section">
+          <div class="ps-section-title">Possible Extraction Discrepancies</div>
+          <table class="ps-mini-table">
+            <thead><tr><th>Vendor</th><th class="num">This Statement</th><th>Other Statement</th><th class="num">Other Amount</th><th class="num">Variance</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`);
+    }
+
+    // Name variants involving this statement
+    if (signals.name_variants.length > 0) {
+      const rows = signals.name_variants.map(nv => {
+        const isA = nv.statement_a === s.original_filename;
+        const thisName  = isA ? nv.name_a : nv.name_b;
+        const otherName = isA ? nv.name_b : nv.name_a;
+        const otherStmt = isA ? nv.statement_b : nv.statement_a;
+        return `
+          <tr>
+            <td><strong>${escapeHtml(thisName)}</strong></td>
+            <td><strong>${escapeHtml(otherName)}</strong></td>
+            <td>${escapeHtml(otherStmt)}</td>
+            <td class="num">${Math.round(nv.similarity * 100)}%</td>
+          </tr>`;
+      }).join('');
+      parts.push(`
+        <div class="ps-section">
+          <div class="ps-section-title">Name Variant Flags</div>
+          <table class="ps-mini-table">
+            <thead><tr><th>This Statement</th><th>Other Statement</th><th>In</th><th class="num">Similarity</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`);
+    }
+
+    return parts.length > 0 ? parts.join('') :
+      '<div class="ps-section"><p class="ps-empty">No additional findings for this statement.</p></div>';
+  }
+
+  window.toggleCard = function(idx) {
+    cardsExpanded[idx] = !cardsExpanded[idx];
+    const card = document.getElementById('ps-card-' + idx);
+    if (card) card.classList.toggle('expanded');
+  };
+
+  /* Per-statement controls */
+  document.getElementById('ps-sort').addEventListener('change', () => {
+    if (lastResponse) renderAgentCards(lastResponse.statements, lastResponse.validation);
+  });
+
+  document.getElementById('expand-all-btn').addEventListener('click', () => {
+    if (!lastResponse || !lastResponse.statements) return;
+    allExpandedToggle = !allExpandedToggle;
+    lastResponse.statements.forEach((_, i) => { cardsExpanded[i] = allExpandedToggle; });
+    document.getElementById('expand-all-btn').textContent =
+      allExpandedToggle ? 'Collapse All' : 'Expand All';
+    renderAgentCards(lastResponse.statements, lastResponse.validation);
+  });
+
+  /* ─────────────────────────────────────────────────────────────────
+   * Consolidated Validation view
+   * ───────────────────────────────────────────────────────────────── */
+  function renderConsolidatedView(data) {
+    renderValidationCollapsibles(data.validation);
+    renderMasterWorkbookCard(data.workbook);
+  }
+
+  function renderValidationCollapsibles(v) {
+    const content = document.getElementById('validation-content');
+    if (!v) {
+      content.innerHTML = '<p class="ps-empty">No validation findings.</p>';
+      return;
+    }
+
+    const sections = [
+      {
+        title: 'Cross-Statement Vendor Matches',
+        items: v.cross_statement_matches || [],
+        summary: (n) => n === 0
+          ? 'No vendors appear across multiple statements'
+          : `${n} vendor${n > 1 ? 's' : ''} matched across 2 or more statements`,
+        renderEmpty: 'No vendors appear across multiple statements.',
+        renderTable: (items) => {
+          let html = '<table class="v-table"><thead><tr>'
+                   + '<th>Vendor</th>'
+                   + '<th class="center">Statements</th>'
+                   + '<th class="num">Combined Total</th>'
+                   + '<th class="center">Review</th>'
+                   + '</tr></thead><tbody>';
+          for (const cm of items) {
+            const reviewCell = cm.crosses_threshold_combined_only
+              ? '<span class="flag-critical">⚠ FILE 1099</span>' : '—';
+            html += `<tr>
+              <td><strong>${escapeHtml(cm.vendor)}</strong></td>
+              <td class="center">${cm.statement_count}</td>
+              <td class="num">$${Number(cm.combined_total).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+              <td class="center">${reviewCell}</td></tr>`;
+          }
+          return html + '</tbody></table>'
+                 + '<p style="font-size:0.78rem;color:var(--text-muted);margin:0.6rem 0 0;">'
+                 + 'Per-statement amount breakdowns are available in the master workbook.</p>';
+        }
+      },
+      {
+        title: 'Name Variant Flags',
+        items: v.name_variants || [],
+        summary: (n) => n === 0
+          ? 'No name variants detected across statements'
+          : `${n} potential duplicate vendor group${n > 1 ? 's' : ''} detected`,
+        renderEmpty: 'No name variants detected across statements.',
+        renderTable: (items) => {
+          let html = '<table class="v-table"><thead><tr>'
+                   + '<th>Statement A</th><th>Name A</th>'
+                   + '<th>Statement B</th><th>Name B</th>'
+                   + '<th class="center">Similarity</th></tr></thead><tbody>';
+          for (const nv of items) {
+            html += `<tr>
+              <td>${escapeHtml(nv.statement_a)}</td>
+              <td><strong>${escapeHtml(nv.name_a)}</strong></td>
+              <td>${escapeHtml(nv.statement_b)}</td>
+              <td><strong>${escapeHtml(nv.name_b)}</strong></td>
+              <td class="center">${Math.round(nv.similarity * 100)}%</td></tr>`;
+          }
+          return html + '</tbody></table>';
+        }
+      },
+      {
+        title: 'Discrepancy Alerts — Possible Extraction Issues',
+        items: v.discrepancy_alerts || [],
+        summary: (n) => n === 0
+          ? 'No suspicious amount variances detected'
+          : `${n} discrepanc${n > 1 ? 'ies' : 'y'} detected across all statements`,
+        renderEmpty: 'No suspicious amount variances detected.',
+        renderTable: (items) => {
+          let html = '<table class="v-table"><thead><tr>'
+                   + '<th>Vendor</th>'
+                   + '<th>Statement A</th><th class="num">Amount A</th>'
+                   + '<th>Statement B</th><th class="num">Amount B</th>'
+                   + '<th class="center">Variance</th></tr></thead><tbody>';
+          for (const am of items) {
+            html += `<tr>
+              <td><strong>${escapeHtml(am.vendor)}</strong></td>
+              <td>${escapeHtml(am.statement_a)}</td>
+              <td class="num">$${Number(am.amount_a).toLocaleString('en-US',{minimumFractionDigits:2})}</td>
+              <td>${escapeHtml(am.statement_b)}</td>
+              <td class="num">$${Number(am.amount_b).toLocaleString('en-US',{minimumFractionDigits:2})}</td>
+              <td class="center"><span class="flag-critical">${am.ratio.toFixed(1)}x</span></td></tr>`;
+          }
+          return html + '</tbody></table>';
+        }
+      },
+      {
+        title: 'Near-Threshold Vendors ($500–$700)',
+        items: v.near_threshold_vendors || [],
+        summary: (n) => n === 0
+          ? 'No vendors in the near-threshold review zone'
+          : `${n} vendor${n > 1 ? 's' : ''} within $100 of the $600 threshold`,
+        renderEmpty: 'No vendors in the near-threshold review zone.',
+        renderTable: (items) => {
+          let html = '<table class="v-table"><thead><tr>'
+                   + '<th>Vendor</th><th>Source</th>'
+                   + '<th class="num">Total</th>'
+                   + '<th class="num">Distance to $600</th></tr></thead><tbody>';
+          for (const nt of items) {
+            const dist = nt.distance_to_threshold;
+            const distLabel = dist < 0
+              ? `<span style="color:var(--ok)">+$${Math.abs(dist).toFixed(2)}</span>`
+              : `-$${Math.abs(dist).toFixed(2)}`;
+            html += `<tr>
+              <td><strong>${escapeHtml(nt.vendor)}</strong></td>
+              <td>${escapeHtml(nt.source)}</td>
+              <td class="num">$${Number(nt.total_amount).toLocaleString('en-US',{minimumFractionDigits:2})}</td>
+              <td class="num">${distLabel}</td></tr>`;
+          }
+          return html + '</tbody></table>';
+        }
+      },
+    ];
+
+    content.innerHTML = sections.map((sec, idx) => {
+      const hasItems = sec.items.length > 0;
+      const stateClass = hasItems ? 'has-review' : 'is-clean';
+      return `
+        <div class="validation-section ${stateClass}" data-section="${idx}">
+          <div class="validation-section-header" onclick="toggleValSection(${idx})">
+            <span><strong>${escapeHtml(sec.title)}</strong></span>
+            <span class="validation-section-summary">${escapeHtml(sec.summary(sec.items.length))}</span>
+            <span class="arrow">${ICONS.chevron}</span>
+          </div>
+          <div class="validation-section-body">
+            ${hasItems ? sec.renderTable(sec.items) : `<p class="ps-empty">${sec.renderEmpty}</p>`}
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  window.toggleValSection = function(idx) {
+    const el = document.querySelector(`.validation-section[data-section="${idx}"]`);
+    if (el) el.classList.toggle('open');
+  };
+
+  document.getElementById('cv-expand-all-btn').addEventListener('click', () => {
+    cvAllExpandedToggle = !cvAllExpandedToggle;
+    document.querySelectorAll('.validation-section').forEach(el => {
+      if (cvAllExpandedToggle) el.classList.add('open');
+      else el.classList.remove('open');
+    });
+    document.getElementById('cv-expand-all-btn').textContent =
+      cvAllExpandedToggle ? 'Collapse All' : 'Expand All';
+  });
+
+  /* ─── Master Workbook block ─── */
+  function renderMasterWorkbookCard(workbook) {
+    const link = document.getElementById('cv-download-link');
+    const successStrip = document.getElementById('mwb-success-strip');
+    const sheetList = document.getElementById('mwb-sheet-list');
+
+    // Sheet metadata is canonical to v1.1 master_excel_generator.py output.
+    // Always 5 sheets, in this order. The Executive Summary is sheet 0
+    // and is what opens by default when the workbook is launched.
+    const sheets = [
+      { name: 'Executive Summary',     desc: 'Key metrics, validation overview, top vendors, and run metadata' },
+      { name: 'Master Vendor Summary', desc: 'Consolidated vendor totals and 1099 eligibility' },
+      { name: 'Validation Report',     desc: 'Cross-statement matches, name variants, discrepancies, near-threshold' },
+      { name: 'All Transactions',      desc: 'Combined transaction-level detail with source statement' },
+      { name: 'Per-Agent Summary',     desc: 'Per-statement processing metrics and cost' },
+    ];
+    // Display count is driven by the canonical list — falls back to backend
+    // value only if for some reason the list is shorter than expected.
+    const sheetCount = (workbook && workbook.sheet_count)
+      ? Math.max(workbook.sheet_count, sheets.length)
+      : sheets.length;
+
+    sheetList.innerHTML = sheets.map(s => `
+      <div class="mwb-sheet-row">
+        <div class="mwb-sheet-icon">${ICONS.sheets}</div>
+        <div class="mwb-sheet-info">
+          <div class="mwb-sheet-name">${escapeHtml(s.name)}</div>
+          <div class="mwb-sheet-desc">${escapeHtml(s.desc)}</div>
+        </div>
+      </div>`).join('');
+
+    if (workbook && workbook.file_id) {
+      link.href = '/api/download/' + encodeURI(workbook.file_id);
+      link.classList.remove('disabled');
+      successStrip.style.display = 'flex';
+      const ts = workbook.generated_at ? formatTimestamp(workbook.generated_at) : '';
+      document.getElementById('mwb-meta-text').textContent =
+        `${ts} · ${sheetCount} sheet${sheetCount !== 1 ? 's' : ''}`;
+    } else {
+      link.removeAttribute('href');
+      link.classList.add('disabled');
+      successStrip.style.display = 'none';
+    }
+  }
+
+  /* ─────────────────────────────────────────────────────────────────
+   * Technical view
+   * ───────────────────────────────────────────────────────────────── */
+  function renderTechnical(tech) {
+    const c = document.getElementById('technical-content');
+    if (!tech) tech = {};
+    const rows = [
+      ['Engine',                tech.engine || '—'],
+      ['Extraction Model',      tech.extraction_model || (tech.engine === 'rule_based' ? 'rule-based (no AI)' : '—')],
+      ['Language',              tech.language || '—'],
+      ['Processing Time (s)',   tech.processing_time_seconds != null ? tech.processing_time_seconds.toFixed(2) : '—'],
+      ['Total Tool Calls',      tech.total_tool_calls || 0],
+      ['Total Cost (USD)',      '$' + Number(tech.total_cost_usd || 0).toFixed(4)],
+    ];
+    c.innerHTML = rows.map(([lbl, val]) => `
+      <div class="tech-row">
+        <span class="lbl">${escapeHtml(lbl)}</span>
+        <span class="val">${escapeHtml(String(val))}</span>
+      </div>`).join('');
+  }
+
+  /* ─── Reset workspace ─── */
+  window.resetWorkspace = function() {
+    pdfFiles = [];
+    csvInput.value = '';
+    cardsExpanded = {};
+    allExpandedToggle = false;
+    cvAllExpandedToggle = false;
+    lastResponse = null;
+    renderPdfList();
+    csvLabel.textContent = 'Click to select CSV';
+    csvSub.textContent = 'or drag and drop';
+    csvDrop.classList.remove('has-file');
+    appShell.classList.add('no-sidebar');
+    main.classList.add('upload');
+    sidebar.style.display = 'none';
+    sidebar.classList.remove('open');
+    resultsSection.style.display = 'none';
+    uploadSection.style.display = 'block';
+    headerStatusArea.style.display = 'none';
+    uploadErrorBanner.classList.remove('show');
+    warnBanner.classList.remove('show');
+    document.getElementById('expand-all-btn').textContent = 'Expand All';
+    document.getElementById('cv-expand-all-btn').textContent = 'Expand All';
+    if (window.location.hash) {
+      history.pushState('', document.title, window.location.pathname + window.location.search);
+    }
+    updateProcessBtn();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  /* ─── Helpers ─── */
+  function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+  }
+  function formatTimestamp(iso) {
+    try {
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return iso;
+      return d.toLocaleString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+      });
+    } catch (e) { return iso; }
+  }
+  function formatDuration(seconds) {
+    seconds = Math.round(seconds);
+    if (seconds < 60) return seconds + 's';
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}m ${s}s`;
+  }
+
+  /* ─── Initialize ─── */
+  renderPdfList();
+  updateProcessBtn();
+  engineSelect.dispatchEvent(new Event('change'));
+</script>
+
+</body>
+</html>

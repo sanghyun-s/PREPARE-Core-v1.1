@@ -1,0 +1,67 @@
+# ──────────────────────────────────────────────────────────────
+# PREPARE Core v1.1 — .gitignore
+# ──────────────────────────────────────────────────────────────
+
+# ── Secrets / environment ──
+.env
+.env.local
+.env.*.local
+
+# ── Sample data (not for public repo) ──
+samples/
+*.pdf
+*.xlsx
+!docs/screenshots/*.png
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv/
+
+# ── Build / dist ──
+build/
+dist/
+*.egg-info/
+*.egg
+develop-eggs/
+.eggs/
+wheels/
+share/
+
+# ── Testing / coverage ──
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.pytest_cache/
+.hypothesis/
+
+# ── App-generated runtime artifacts ──
+uploads_tmp/
+outputs/
+*.log
+
+# ── IDE / editor ──
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ── Jupyter ──
+.ipynb_checkpoints/
+
+# ── Type checkers ──
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+.ruff_cache/
