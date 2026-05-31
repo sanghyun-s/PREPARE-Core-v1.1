@@ -20,10 +20,25 @@ v1.0 changes from v0.6:
     * `language` parameter retained as a no-op pass-through; reserved for
       future workbook/report localization in v1.1.
 
-Model strategy (unchanged in v1.0):
-    Extraction model:  Haiku by default. Advanced override available via
-                       extraction_model parameter (with rate-limit risk).
-    Validation model:  Removed. The deterministic engine has no model.
+Model strategy (updated in v1.2):
+    Extraction model:  Sonnet by default. Opus available as advanced
+                       override via extraction_model parameter. Haiku
+                       removed — not appropriate for structured PDF
+                       extraction and accounting analysis.
+    Validation model:  Removed in v1.0. The deterministic engine has no model.
+
+v1.2 — Transaction Classifier integration in rule-based engine
+---------------------------------------------------------------
+_run_rule_based previously had a subtle dual-extraction issue: it called
+run_pipeline() to generate the Excel (which classifies via pipeline.py),
+then called extract_transactions() a second time to build the JSON response
+payload — and that second pass did NOT classify. Result: the per-statement
+Excel was correct but the UI Workspace KPIs were not.
+
+The fix wires the classifier into the second-pass code so both paths are
+consistent. The JSON response now reflects classified data: only
+include_for_1099 == True rows contribute to vendor totals, transaction
+counts, and over-$600 candidate counts.
 
 Status taxonomy:
     success            — all pipeline steps completed cleanly
@@ -70,10 +85,15 @@ from agent_tools import (
 
 
 # ---------------------------------------------------------------------------
-# Model constants — extraction is locked, validation_model is gone in v1.0
+# Model constants — extraction default updated in v1.2
 # ---------------------------------------------------------------------------
+# v1.2: Default extraction model changed from Haiku to Sonnet. Mentor
+# feedback: Haiku is appropriate for lightweight conversational tasks but
+# is not the right model class for structured PDF extraction and accounting
+# analysis. Sonnet is the recommended default. Opus remains available as an
+# advanced override (selectable in the frontend Advanced panel).
 
-EXTRACTION_MODEL_DEFAULT = "claude-haiku-4-5-20251001"
+EXTRACTION_MODEL_DEFAULT = "claude-sonnet-4-6"
 
 
 # ---------------------------------------------------------------------------
@@ -140,16 +160,26 @@ def _serialize_summaries(summaries: list) -> list[dict]:
 
 
 def _serialize_transactions(transactions: list, normalized: list) -> list[dict]:
-    """Convert Transaction objects to plain dicts."""
+    """Convert Transaction objects to plain dicts.
+
+    v1.2: surfaces transaction_type and include_for_1099 if the classifier
+    has run. Old/unclassified Transaction objects fall back to defaults.
+    """
     out = []
     for t, n in zip(transactions, normalized or [None] * len(transactions)):
         out.append({
-            "date":            getattr(t, "date", ""),
-            "raw_description": getattr(t, "description", ""),
-            "amount":          round(getattr(t, "amount", 0.0), 2),
-            "canonical_name":  n.canonical_name if n else "",
-            "excluded":        bool(n.excluded) if n else False,
-            "exclusion_reason": getattr(n, "exclusion_reason", "") if n else "",
+            "date":              getattr(t, "date", ""),
+            "raw_description":   getattr(t, "description", ""),
+            "amount":            round(getattr(t, "amount", 0.0), 2),
+            "canonical_name":    n.canonical_name if n else "",
+            "excluded":          bool(n.excluded) if n else False,
+            "exclusion_reason":  getattr(n, "exclusion_reason", "") if n else
+                                 getattr(t, "exclusion_reason", ""),
+            # v1.2: classifier outputs (default vendor_payment / True for
+            # backward-compat with any code path that bypasses the classifier)
+            "transaction_type":  getattr(t, "transaction_type", "vendor_payment"),
+            "include_for_1099":  getattr(t, "include_for_1099", True),
+            "review_required":   getattr(t, "review_required", False),
         })
     return out
 
@@ -407,7 +437,16 @@ async def _run_rule_based(
     output_dir: Path,
     vendor_list_path: str | None,
 ) -> dict:
-    """Run deterministic pipeline on each PDF — sequential, no AI."""
+    """Run deterministic pipeline on each PDF — sequential, no AI.
+
+    v1.2: After the duplicate extract_transactions() call below (used to
+    build the JSON response payload), the classifier is now invoked so
+    that the response reflects only include_for_1099 == True rows. Without
+    this, the per-statement Excel files would be correct (built by
+    run_pipeline) but the UI Workspace KPIs would still show pre-classifier
+    counts. Both paths must classify identically to give the UI consistent
+    numbers.
+    """
     from pipeline import run_pipeline
 
     agent_outputs = []
@@ -425,8 +464,20 @@ async def _run_rule_based(
             from pdf_extractor import extract_transactions
             from vendor_normalizer import normalize_vendor
             from transaction_aggregator import aggregate_by_vendor
+            from transaction_classifier import (
+                classify_transactions,
+                filter_for_aggregation,
+            )
 
             extr = extract_transactions(pdf_path)
+
+            # ── v1.2: classify before normalize/aggregate, mirroring pipeline.py ──
+            # Tags every Transaction with transaction_type, include_for_1099,
+            # review_required, exclusion_reason. Filter to the included subset
+            # so vendor totals reflect only vendor-payment rows.
+            classify_transactions(extr.transactions)
+            included_txns = filter_for_aggregation(extr.transactions)
+
             known = []
             if vendor_list_path:
                 import csv
@@ -434,8 +485,12 @@ async def _run_rule_based(
                     reader = csv.reader(f)
                     next(reader, None)
                     known = [r[0].strip() for r in reader if r and r[0].strip()]
-            normalized = [normalize_vendor(t.description, known) for t in extr.transactions]
-            summaries = aggregate_by_vendor(extr.transactions, normalized)
+
+            normalized = [
+                normalize_vendor(t.description, known)
+                for t in included_txns
+            ]
+            summaries = aggregate_by_vendor(included_txns, normalized)
 
             agent_outputs.append({
                 "statement_label":       label,
@@ -444,7 +499,22 @@ async def _run_rule_based(
                 "status":                "success",
                 "error_message":         None,
                 "vendors":               _serialize_summaries(summaries),
-                "transactions":          _serialize_transactions(extr.transactions, normalized),
+                # Serialize the FULL classified list (including excluded rows)
+                # so the UI/Excel can show what was filtered out and why.
+                # Aggregation totals already reflect only included rows via
+                # `summaries`.
+                "transactions":          _serialize_transactions(
+                                              extr.transactions,
+                                              # Pad normalized so zip aligns
+                                              # with the full transaction list:
+                                              # included rows have NormalizedVendor,
+                                              # excluded rows get None.
+                                              _pad_normalized_to_full_list(
+                                                  extr.transactions,
+                                                  included_txns,
+                                                  normalized,
+                                              ),
+                                          ),
                 "tool_calls":            0,
                 "cost_usd":              0.0,
                 "extraction_confidence": stats.get("confidence", 0.85),
@@ -474,6 +544,29 @@ async def _run_rule_based(
         "agent_outputs":  agent_outputs,
         "total_cost_usd": 0.0,
     }
+
+
+def _pad_normalized_to_full_list(
+    full_txns: list,
+    included_txns: list,
+    normalized_for_included: list,
+) -> list:
+    """
+    v1.2 helper — produce a `normalized` list aligned with the FULL transaction
+    list (including excluded rows). Excluded rows get None as their normalized
+    entry, so _serialize_transactions's zip() walks both lists together
+    without losing the excluded rows from the response payload.
+
+    This keeps the response shape stable: the frontend sees one row per
+    extracted transaction, with `excluded` / `transaction_type` /
+    `include_for_1099` flags surfacing why each row was treated the way
+    it was.
+    """
+    # Build a fast lookup from id(included_txn) → normalized_entry
+    norm_by_id = {
+        id(t): n for t, n in zip(included_txns, normalized_for_included)
+    }
+    return [norm_by_id.get(id(t)) for t in full_txns]
 
 
 # ---------------------------------------------------------------------------

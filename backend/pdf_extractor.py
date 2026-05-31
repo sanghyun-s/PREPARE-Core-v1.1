@@ -25,6 +25,26 @@ and tax schedules using a three-tier strategy:
     Confidence scoring: each result is scored 0.0–1.0. If the rule-based
     tiers score below CONFIDENCE_THRESHOLD, Claude fallback is triggered
     automatically (if ANTHROPIC_API_KEY is available).
+
+v1.2 — defense-in-depth on multi-column extraction
+---------------------------------------------------
+Previously, when a multi-column statement had an empty Withdrawal/Debit
+column for a row, the extractor fell back to the Credit/Deposit column
+and used that amount AS IF it were a withdrawal. Result: payroll direct
+deposits were extracted as transactions worth $6,500 each, opening/ending
+balance amounts could leak through as transactions, and totals on
+multi-column PDFs were dramatically inflated.
+
+The downstream classifier (backend/transaction_classifier.py) catches
+these rows by description matching and excludes them from aggregation.
+But to keep the extractor itself honest — so rule-based mode without
+the classifier doesn't expose garbage totals to a developer doing
+direct testing — extract_from_tables now refuses to fall back to the
+Credit/Deposit column when the row description looks like a deposit,
+payroll, transfer, or refund.
+
+Both layers (extractor sanity + classifier filter) protect against the
+same bug. Either alone would be sufficient; together they're robust.
 """
 
 import re
@@ -46,6 +66,17 @@ CONFIDENCE_THRESHOLD = 0.4   # Below this score → trigger Claude fallback
 MIN_TRANSACTIONS_RULE_BASED = 3  # Fewer than this → low confidence even if some found
 CLAUDE_FALLBACK_MODEL = "claude-haiku-4-5-20251001"
 MAX_TEXT_CHARS_FOR_FALLBACK = 12000  # Truncate very long PDFs to fit context
+
+# v1.2: keywords that disqualify a row from the credit-column fallback in
+# extract_from_tables. If the description contains any of these, the
+# extractor will NOT use the Credit/Deposit column as the transaction
+# amount — because the row is income/transfer, not a vendor payment.
+# Defense in depth on top of backend/transaction_classifier.py.
+_DEPOSIT_LIKE_KEYWORDS = (
+    "deposit", "payroll", "direct dep", "transfer from", "transfer to",
+    "xfer", "refund", "interest earned", "interest paid",
+    "wire in", "ach credit",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -236,6 +267,26 @@ def should_skip_line(line: str) -> bool:
     return any(p.search(line) for p in SKIP_PATTERNS)
 
 
+def _looks_like_deposit_or_transfer(description: str) -> bool:
+    """
+    v1.2 helper: True if the description looks like a deposit, payroll,
+    transfer, refund, or other non-vendor-payment row.
+
+    Used by extract_from_tables to decide whether to fall back to the
+    Credit/Deposit column when the Withdrawal/Debit column is empty.
+    A row whose description matches these keywords should NOT have its
+    Credit-column amount used as a transaction amount — that would
+    falsely convert income into vendor-payment expense.
+
+    This is defense in depth on top of backend/transaction_classifier.py,
+    which catches the same rows downstream by classification.
+    """
+    if not description:
+        return False
+    desc_lower = description.lower()
+    return any(kw in desc_lower for kw in _DEPOSIT_LIKE_KEYWORDS)
+
+
 def detect_document_type(raw_text: str) -> str:
     """Heuristically identify the document type from its text content."""
     text_lower = raw_text.lower()
@@ -285,7 +336,21 @@ def score_extraction(transactions: list[Transaction], doc_type: str) -> float:
 # ---------------------------------------------------------------------------
 
 def extract_from_tables(pdf_path: str, source: str = "bank") -> list[Transaction]:
-    """Extract transactions from PDF tables (pdfplumber)."""
+    """Extract transactions from PDF tables (pdfplumber).
+
+    v1.2: when a row has an empty Withdrawal/Debit column, the extractor
+    used to fall back to the Credit/Deposit column as a last resort.
+    That caused payroll deposits and other income rows to be extracted
+    as if they were vendor payments. The fallback now refuses to do
+    that for rows whose description looks like a deposit, payroll,
+    transfer, or refund.
+
+    Defense in depth: even if a deposit row leaks through here, the
+    downstream classifier (backend/transaction_classifier.py) catches
+    it. But this fix keeps the extractor itself honest so rule-based
+    mode without the classifier (e.g. unit tests, CLI debugging) sees
+    accurate amounts.
+    """
     transactions = []
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages:
@@ -333,12 +398,19 @@ def extract_from_tables(pdf_path: str, source: str = "bank") -> list[Transaction
                     date_val = str(row[date_idx] or "").strip()
                     desc_val = str(row[desc_idx] or "").strip()
 
-                    # Try debit column first, then credit
+                    # Try debit column first
                     amt_val = None
                     if amt_idx is not None:
                         amt_val = parse_amount(str(row[amt_idx] or ""))
+
+                    # ── v1.2: gated credit-column fallback ──
+                    # Only use the Credit/Deposit column if the row description
+                    # does NOT look like a deposit, payroll, transfer, or
+                    # refund. Otherwise income amounts would be falsely
+                    # treated as vendor-payment expenses.
                     if (amt_val is None or amt_val == 0) and credit_idx is not None:
-                        amt_val = parse_amount(str(row[credit_idx] or ""))
+                        if not _looks_like_deposit_or_transfer(desc_val):
+                            amt_val = parse_amount(str(row[credit_idx] or ""))
 
                     if date_val and desc_val and amt_val and amt_val != 0:
                         if not should_skip_line(desc_val):

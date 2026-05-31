@@ -1,7 +1,29 @@
 """
-Master Excel Generator — v1.1
-------------------------------
+Master Excel Generator — v1.2 (Phase 3a)
+----------------------------------------
 Produces a single consolidated workbook from multiple agent outputs.
+
+v1.2 (Phase 3a) changes from v1.1:
+    * A1: Executive Summary KPI #1 renamed "Total Transactions" →
+      "Included Payments" with sublabel "Vendor payments in 1099 aggregation"
+      to match WebUI Workspace KPI labeling (Phase 2 frontend).
+    * A2: Validation Report column widths rebalanced. Column E widened
+      20 → 60 to fit "Per-Statement Breakdown" cell content (filename +
+      currency pairs joined with ';'). Adaptive row height for breakdown
+      rows over 55 chars.
+    * A3: Master Vendor Summary "Review Reasons" column now substitutes
+      internal UUID-based filenames (e.g., '29f0b14961914821ae5624686f0321a0.pdf')
+      with original filenames (e.g., 'sample_bank_multicolumn.pdf') via
+      regex post-processing. Fixes accountant-readability issue where
+      review-reason narratives written upstream by validation_engine
+      contained baked-in UUIDs.
+    * A5: Executive Summary "Included Payments" KPI value now filters out
+      rows tagged `excluded=True` so the value matches the WebUI Workspace
+      KPI of the same name. Filter operates on per-transaction `excluded`
+      flags set by the PDF Skill engine path. Rule-based engine path does
+      not set these flags (uses different serialization via agent_app.py)
+      and shows the pre-filter count; this asymmetry is documented in
+      V1_3_RELEASE_NOTES and queued for engine convergence in v1.4.
 
 v1.1 changes from v1.0:
     * NEW: Executive Summary sheet at index 0 (workbook opens here by default).
@@ -108,6 +130,44 @@ def _make_resolver(filename_map: dict[str, str] | None):
 
     return resolve
 
+def _make_text_resolver(filename_map: dict[str, str] | None):
+    """
+    Return a `_resolve_in_text(text)` function that finds UUID-style
+    statement labels embedded anywhere inside a free-text string and
+    substitutes their original filenames.
+
+    Used for cells that contain narrative text written upstream (e.g.,
+    Review Reasons assembled by validation_engine), where UUIDs are baked
+    into the string before the workbook layer sees it.
+
+    UUID pattern: 32 hex characters, optionally followed by ".pdf".
+    Conservative — won't accidentally rewrite other 32-char identifiers
+    because it requires hex-only and matches both `<uuid>` and `<uuid>.pdf`.
+
+    v1.2 (Phase 3a, A3): Introduced to fix Review Reasons column showing
+    raw UUIDs like '29f0b14961914821ae5624686f0321a0.pdf' instead of
+    'sample_bank_multicolumn.pdf' in the Master Vendor Summary sheet.
+    """
+    import re
+
+    # 32 lowercase hex chars, optional .pdf suffix
+    uuid_pattern = re.compile(r'\b([0-9a-f]{32})(\.pdf)?\b')
+
+    if not filename_map:
+        return lambda text: text
+
+    def resolve_in_text(text: str) -> str:
+        if not text:
+            return text
+
+        def _sub(match: re.Match) -> str:
+            stem = match.group(1)             # the 32-hex portion
+            return filename_map.get(stem, match.group(0))   # fall back to original match if not found
+
+        return uuid_pattern.sub(_sub, text)
+
+    return resolve_in_text
+
 
 # ---------------------------------------------------------------------------
 # Sheet 0 — Executive Summary (NEW in v1.1)
@@ -163,7 +223,9 @@ def write_executive_summary(
 
     # ── Compute KPIs ──
     successful = [o for o in agent_outputs if o.get("status") in ("success", "partial")]
-    total_transactions = sum(len(o.get("transactions", [])) for o in successful)
+    total_transactions = sum(
+    sum(1 for t in o.get("transactions", []) if not t.get("excluded"))
+    for o in successful)
     unique_vendor_names = set()
     total_amount = 0.0
     vendors_over_threshold = 0
@@ -177,6 +239,48 @@ def write_executive_summary(
         sum(1 for f in flags.values() if f.needs_review)
         for flags in flags_by_statement.values()
     )
+
+    # ── v1.4 Phase 4E — cross-statement reconciliation roll-up ──
+    # Tally per-statement reconciliation status across SUCCESSFUL statements
+    # only (failed statements don't belong in the denominator). Each successful
+    # agent_output carries `reconciliation_snapshot` (the dict the pipeline
+    # computed; see server.py). Status is one of balanced / needs_review /
+    # unavailable; a missing snapshot (None — e.g. rule_based/multi_agent
+    # engines that don't extract balances) is folded into "unavailable" since,
+    # from the accountant's view, both mean "no reconciliation result for this
+    # statement." `recon_total` is the denominator (successful statements).
+    recon_balanced = 0
+    recon_needs_review = 0
+    recon_unavailable = 0
+    # v1.4 Phase 4 — Source B tally. Parallel to Source A: across SUCCESSFUL
+    # statements, count how many have status="complete" extraction (row sums
+    # match stated totals). "incomplete" and "unavailable" (and missing
+    # extraction_check entirely) fold into ec_not_complete for the summary
+    # line; the line only renders when at least one successful statement
+    # produced a usable check.
+    ec_complete = 0
+    ec_incomplete = 0
+    ec_unavailable = 0
+    for o in successful:
+        snap = o.get("reconciliation_snapshot")
+        status = snap.get("status") if isinstance(snap, dict) else None
+        if status == "balanced":
+            recon_balanced += 1
+        elif status == "needs_review":
+            recon_needs_review += 1
+        else:
+            # "unavailable" status OR no snapshot at all
+            recon_unavailable += 1
+        # v1.4 Phase 4 — Source B tally per statement
+        ec = o.get("extraction_check")
+        ec_status = ec.get("status") if isinstance(ec, dict) else None
+        if ec_status == "complete":
+            ec_complete += 1
+        elif ec_status == "incomplete":
+            ec_incomplete += 1
+        else:
+            ec_unavailable += 1
+    recon_total = len(successful)
 
     # ── KPI tiles ──
     ws["A4"] = "KEY METRICS"
@@ -194,7 +298,7 @@ def write_executive_summary(
         ("I5:J5", "I6:J6", "I7:J7", 9, 10),
     ]
     kpis = [
-        ("Total Transactions",   f"{total_transactions:,}",        "Across all statements"),
+        ("Included Payments",    f"{total_transactions:,}",        "Vendor payments in 1099 aggregation"),
         ("Unique Vendors",       f"{len(unique_vendor_names):,}",  "Unique across all statements"),
         ("Total Reconciled",     f"${_round_currency(total_amount):,.2f}", "Total amount matched"),
         ("Over $600 (1099)",     f"{vendors_over_threshold:,}",    "Potential 1099 candidates"),
@@ -263,6 +367,76 @@ def write_executive_summary(
         ws.row_dimensions[row].height = 22
         # Highlight non-zero counts amber across all 10 columns
         if count > 0:
+            for c in range(1, 11):
+                ws.cell(row=row, column=c).fill = REVIEW_FILL
+        row += 1
+
+    # ── v1.4 Phase 4E — Statement Reconciliation roll-up ──
+    # Placed after Validation Overview, before Top Vendors, to group the two
+    # cross-statement summaries together above the per-vendor detail. Uses the
+    # running `row` cursor (continues from the Validation Overview loop), so the
+    # Top Vendors block and everything below it shift down automatically — no
+    # absolute-row renumbering of the lower sections required.
+    row += 1  # one blank spacer row after Validation Overview
+    ws.cell(row=row, column=1, value="STATEMENT RECONCILIATION").font = SUBTITLE_FONT
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=10)
+    ws.row_dimensions[row].height = 20
+    row += 1
+
+    # Glass-half-full header line: "X of N statements reconcile".
+    if recon_total > 0:
+        recon_headline = f"{recon_balanced} of {recon_total} statements reconcile"
+    else:
+        recon_headline = "No statements available to reconcile"
+    ws.cell(row=row, column=1, value=recon_headline).font = BODY_BOLD
+    ws.cell(row=row, column=1).alignment = LEFT
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=10)
+    ws.row_dimensions[row].height = 22
+    row += 1
+
+    # Three count rows, mirroring the Validation Overview row style
+    # (label bold col A, count bold centered col B, description col C:J).
+    recon_rows = [
+        ("Balanced", recon_balanced,
+         "Statements whose stated totals reconcile", False),
+        ("Needs Review", recon_needs_review,
+         "Statements with a balance discrepancy to verify", True),
+        ("Unavailable", recon_unavailable,
+         "No balance summary extracted (or non-PDF-Skill engine)", False),
+    ]
+    for label, count, desc, amber_when_nonzero in recon_rows:
+        ws.cell(row=row, column=1, value=label).font = BODY_BOLD
+        ws.cell(row=row, column=1).alignment = LEFT
+        ws.cell(row=row, column=2, value=count).font = BODY_BOLD
+        ws.cell(row=row, column=2).alignment = CENTER
+        ws.cell(row=row, column=3, value=desc).font = SUBTLE_FONT
+        ws.cell(row=row, column=3).alignment = LEFT
+        ws.merge_cells(start_row=row, start_column=3, end_row=row, end_column=10)
+        ws.row_dimensions[row].height = 22
+        # Amber highlight only on the Needs Review row when its count > 0,
+        # matching how Validation Overview flags non-zero findings.
+        if amber_when_nonzero and count > 0:
+            for c in range(1, 11):
+                ws.cell(row=row, column=c).fill = REVIEW_FILL
+        row += 1
+
+    # v1.4 Phase 4 — Source B: extraction-completeness summary line. Renders
+    # ONLY when at least one successful statement produced a usable check
+    # (complete or incomplete). When all successful statements returned
+    # status="unavailable" (e.g. no balance summary extracted), the line is
+    # omitted to avoid implying coverage that doesn't exist. Amber-highlighted
+    # when any statement is incomplete, mirroring the Needs Review treatment.
+    ec_assessable = ec_complete + ec_incomplete
+    if ec_assessable > 0:
+        ec_line = f"Extraction Cross-Check: {ec_complete} of {ec_assessable} show complete extraction"
+        if ec_incomplete > 0:
+            ec_line += f" · {ec_incomplete} incomplete"
+        ws.cell(row=row, column=1, value=ec_line).font = BODY_BOLD
+        ws.cell(row=row, column=1).alignment = LEFT
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=10)
+        ws.row_dimensions[row].height = 22
+        # Amber across the row when any statement is incomplete.
+        if ec_incomplete > 0:
             for c in range(1, 11):
                 ws.cell(row=row, column=c).fill = REVIEW_FILL
         row += 1
@@ -455,6 +629,7 @@ def write_master_vendor_summary(
 ):
     ws = wb.create_sheet("Master Vendor Summary")
     resolve = _make_resolver(filename_map)
+    resolve_text = _make_text_resolver(filename_map)
 
     ws["A1"] = "MASTER VENDOR SUMMARY — All Statements Combined"
     ws["A1"].font = TITLE_FONT
@@ -522,7 +697,7 @@ def write_master_vendor_summary(
                 v.get("match_confidence", 1.0),
                 f.extraction_confidence if f else 1.0,
                 "YES" if (f and f.needs_review) else "NO",
-                "; ".join(f.reasons) if f and f.reasons else "",
+                resolve_text("; ".join(f.reasons)) if f and f.reasons else "",
                 xref_text,
             ]
 
@@ -769,17 +944,10 @@ def write_validation_report(
     ws["A1"].font = TITLE_FONT
     ws.merge_cells("A1:F1")
 
-    # Global column widths chosen to work for all 4 sections on this sheet,
-    # since column widths apply sheet-wide. Tuned for:
-    #   • Vendor / Name columns A-D wide enough for 25-char vendor names
-    #     and statement filenames (e.g., "sample_credit_card_chase.pdf")
-    #   • Numeric columns C, E generous for currency with commas
-    #   • Last column F room for amounts, similarity, or variance ratios
-    column_widths = [32, 32, 20, 32, 20, 24]
+    column_widths = [32, 32, 18, 32, 60, 26]
     for col_idx, width in enumerate(column_widths, start=1):
         ws.column_dimensions[get_column_letter(col_idx)].width = width
 
-    # Red-bold font for high-variance cells (>3.0x ratio in Discrepancy Alerts)
     variance_critical_font = Font(name="Arial", bold=True, size=11, color="DC2626")
 
     row = 3
@@ -792,12 +960,8 @@ def write_validation_report(
                        end_row=current_row, end_column=6)
         return current_row + 1
 
-    # ── Cross-Statement Vendor Matches ──
     row = section_header("Cross-Statement Vendor Matches", row)
     if validation.cross_matches:
-        # 5-column table: Vendor / Statements / Combined Total / Crosses $600 /
-        # Per-Statement Breakdown. The Per-Statement Breakdown column is the
-        # full per-statement amount detail; no need for a separate footer.
         headers = ["Vendor", "Statements", "Combined Total ($)",
                    "Crosses $600 (Combined Only)", "Per-Statement Breakdown"]
         for col_idx, h in enumerate(headers, start=1):
@@ -824,6 +988,10 @@ def write_validation_report(
             if cm.crosses_threshold_combined_only:
                 for c in range(1, 6):
                     ws.cell(row=row, column=c).fill = ELIGIBLE_FILL
+            if len(breakdown) > 110:
+                ws.row_dimensions[row].height = 45
+            elif len(breakdown) > 55:
+                ws.row_dimensions[row].height = 30
             row += 1
     else:
         ws.cell(row=row, column=1,
@@ -831,7 +999,6 @@ def write_validation_report(
         row += 1
     row += 2
 
-    # ── Name Variant Flags ──
     row = section_header("Name Variant Flags", row)
     if validation.name_variants:
         headers = ["Statement A", "Name in A", "Statement B", "Name in B",
@@ -844,7 +1011,7 @@ def write_validation_report(
         row += 1
         for nv in validation.name_variants:
             ws.cell(row=row, column=1, value=resolve(nv.statement_a)).font = BODY_FONT
-            ws.cell(row=row, column=1).alignment = LEFT  # wrap long filenames
+            ws.cell(row=row, column=1).alignment = LEFT
             ws.cell(row=row, column=2, value=nv.name_a).font = BODY_FONT
             ws.cell(row=row, column=2).alignment = LEFT
             ws.cell(row=row, column=3, value=resolve(nv.statement_b)).font = BODY_FONT
@@ -865,7 +1032,6 @@ def write_validation_report(
         row += 1
     row += 2
 
-    # ── Discrepancy Alerts ──
     row = section_header("Discrepancy Alerts — Possible Extraction Issues", row)
     if validation.amount_mismatches:
         headers = ["Vendor", "Statement A", "Amount A", "Statement B", "Amount B", "Variance"]
@@ -886,8 +1052,6 @@ def write_validation_report(
             ws.cell(row=row, column=4).alignment = LEFT
             ws.cell(row=row, column=5, value=_round_currency(am.amount_b)).number_format = '$#,##0.00'
             ws.cell(row=row, column=5).alignment = RIGHT
-            # Variance: red bold when ratio > 3.0x to draw the eye to severe
-            # extraction discrepancies; default styling otherwise.
             variance_cell = ws.cell(row=row, column=6, value=f"{am.ratio:.1f}x")
             variance_cell.alignment = CENTER
             if am.ratio > 3.0:
@@ -903,7 +1067,6 @@ def write_validation_report(
         row += 1
     row += 2
 
-    # ── Near-Threshold Vendors ──
     row = section_header("Near-Threshold Vendors ($500–$700 Review Zone)", row)
     if validation.near_threshold:
         headers = ["Vendor", "Source", "Total ($)", "Distance to $600"]
@@ -929,68 +1092,10 @@ def write_validation_report(
                 value="No vendors in the near-threshold review zone.").font = SUBTLE_FONT
         row += 1
 
-    # Print: landscape, fit to 1 page wide.
     ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
     ws.page_setup.fitToWidth = 1
     ws.page_setup.fitToHeight = 0
     ws.sheet_properties.pageSetUpPr.fitToPage = True
-
-
-# ---------------------------------------------------------------------------
-# Failed files log (defined but not invoked — preserved from v1.0)
-# ---------------------------------------------------------------------------
-
-def write_failed_files_log(
-    wb: Workbook,
-    agent_outputs: list[dict],
-    filename_map: dict[str, str] | None = None,
-):
-    ws = wb.create_sheet("Failed Files Log")
-    resolve = _make_resolver(filename_map)
-
-    ws["A1"] = "FAILED / PARTIAL FILES LOG"
-    ws["A1"].font = TITLE_FONT
-    ws.merge_cells("A1:E1")
-
-    headers = ["Statement", "Status", "Reason", "Tool Calls Before Failure", "Cost Incurred ($)"]
-    widths = [40, 18, 50, 24, 18]
-    for col_idx, (h, w) in enumerate(zip(headers, widths), start=1):
-        cell = ws.cell(row=3, column=col_idx, value=h)
-        cell.fill = HEADER_FILL
-        cell.font = HEADER_FONT
-        cell.alignment = CENTER
-        ws.column_dimensions[get_column_letter(col_idx)].width = w
-    ws.row_dimensions[3].height = 26
-
-    failed = [o for o in agent_outputs if o.get("status") not in ("success",)]
-
-    if not failed:
-        ws.cell(row=4, column=1,
-                value="✓ All statements processed successfully — no failures.").font = BODY_FONT
-        ws.cell(row=4, column=1).fill = ELIGIBLE_FILL
-        ws.merge_cells("A4:E4")
-        return
-
-    row = 4
-    for out in failed:
-        status = out.get("status", "unknown")
-        ws.cell(row=row, column=1, value=resolve(out["statement_label"])).font = BODY_FONT
-        ws.cell(row=row, column=2,
-                value=status.upper().replace("_", " ")).alignment = CENTER
-        ws.cell(row=row, column=3,
-                value=out.get("error_message") or "No vendor data extracted").font = BODY_FONT
-        ws.cell(row=row, column=3).alignment = LEFT
-        ws.cell(row=row, column=4, value=out.get("tool_calls", 0)).alignment = CENTER
-        ws.cell(row=row, column=5, value=_round_currency(out.get("cost_usd", 0.0))).number_format = '$0.0000'
-
-        for c in range(1, 6):
-            cell = ws.cell(row=row, column=c)
-            cell.border = BORDER
-            if status == "partial":
-                cell.fill = REVIEW_FILL
-            else:
-                cell.fill = FAILED_FILL
-        row += 1
 
 
 # ---------------------------------------------------------------------------
@@ -1005,31 +1110,9 @@ def generate_master_workbook(
     validation: DeterministicValidation,
     filename_map: dict[str, str] | None = None,
 ) -> str:
-    """
-    Generate the consolidated 5-sheet master workbook (v1.1).
-
-    Sheet order:
-      0. Executive Summary    ★ new in v1.1
-      1. Master Vendor Summary
-      2. Validation Report
-      3. All Transactions
-      4. Per-Agent Summary
-
-    Args:
-        output_path:                path to write .xlsx
-        agent_outputs:              list of agent result dicts
-        flags_by_statement:         {statement_label: {vendor_name: ReviewFlags}}
-        eligibility_by_statement:   {statement_label: {vendor_name: EligibilityResult}}
-        validation:                 DeterministicValidation result
-        filename_map:               optional {file_id: original_filename} mapping
-
-    Returns:
-        output_path
-    """
     wb = Workbook()
     wb.remove(wb.active)
 
-    # NEW in v1.1: Executive Summary first, becomes the active sheet on open
     write_executive_summary(
         wb, agent_outputs, flags_by_statement, eligibility_by_statement,
         validation, filename_map=filename_map,

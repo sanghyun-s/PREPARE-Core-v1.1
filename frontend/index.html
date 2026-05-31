@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PREPARE Core v1.1 · Statement Reconciliation Workspace</title>
+<title>PREPARE Core v1.3 · Statement Reconciliation Workspace</title>
 <style>
   /* ─────────────────────────────────────────────────────────────────
    * Design tokens
@@ -590,6 +590,75 @@
   .vs-amber  { --vs-color: var(--warn);        --vs-soft: var(--warn-soft); }
   .vs-red    { --vs-color: var(--err);         --vs-soft: var(--err-soft); }
 
+  /* ─────────────────────────────────────────────────────────────────
+   * v1.4 Phase 4E (web tile) — Workspace reconciliation roll-up.
+   *
+   * A small section between Validation Overview and the Workbook CTA showing
+   * cross-statement reconciliation status: "X of N statements reconcile" +
+   * balanced / needs_review / unavailable breakdown. Mirrors the STATEMENT
+   * RECONCILIATION block in the master Excel Executive Summary.
+   *
+   * Layout: a card with a heading line, then three pill-counters in a row.
+   * The needs_review pill goes amber when its count > 0, matching the master
+   * workbook treatment.
+   * ───────────────────────────────────────────────────────────────── */
+  .ws-recon {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.25rem;
+    box-shadow: var(--shadow);
+    margin-top: 1rem;
+  }
+  .ws-recon-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 1rem; margin-bottom: 0.65rem; flex-wrap: wrap;
+  }
+  .ws-recon-title {
+    font-size: 0.78rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-secondary);
+  }
+  .ws-recon-headline {
+    font-size: 0.92rem; font-weight: 700;
+    color: var(--text-primary);
+  }
+  .ws-recon-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.6rem;
+  }
+  .ws-recon-pill {
+    display: flex; align-items: center; gap: 0.7rem;
+    background: var(--bg-section);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.6rem 0.85rem;
+  }
+  .ws-recon-pill .pill-count {
+    font-size: 1.45rem; font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+  .ws-recon-pill .pill-text {
+    display: flex; flex-direction: column; min-width: 0;
+  }
+  .ws-recon-pill .pill-label {
+    font-size: 0.82rem; font-weight: 600;
+    color: var(--text-primary);
+  }
+  .ws-recon-pill .pill-desc {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    line-height: 1.35;
+  }
+  .ws-recon-pill.balanced .pill-count    { color: var(--ok); }
+  .ws-recon-pill.flagged                 { background: var(--warn-soft); border-color: #FBC79A; }
+  .ws-recon-pill.flagged .pill-count     { color: var(--warn); }
+  .ws-recon-pill.unavailable .pill-count { color: var(--text-muted); }
+
   /* Workspace workbook CTA */
   .workbook-cta {
     background: var(--bg-card);
@@ -712,6 +781,14 @@
     font-weight: 600;
   }
   .ps-card-meta .sep { margin: 0 0.4rem; color: var(--text-muted); }
+  .ps-card-meta .engine-tag {
+    color: var(--brand-blue);
+    font-weight: 600;
+    font-size: 0.78rem;
+    background: var(--brand-blue-soft);
+    padding: 0.05rem 0.5rem;
+    border-radius: 999px;
+  }
   .ps-status-pill {
     display: inline-flex; align-items: center; gap: 0.35rem;
     background: var(--ag-soft);
@@ -781,6 +858,34 @@
   .ps-metric.review .ps-metric-value { color: var(--err); }
   .ps-metric.review.zero .ps-metric-value { color: var(--text-primary); }
 
+  /* v1.3 Phase 2: parsed/included/excluded info line — sits between
+     the 5 main metrics and the yellow Review summary strip. Only renders
+     when PDF Skill data with non-trivial breakdown is present. Visually
+     subordinate to the main metrics: small text, no border, soft color. */
+  .ps-activity-line {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    padding: 0.35rem 0 0.5rem;
+    margin: -0.5rem 0 0.55rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .ps-activity-line .activity-segment {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.25rem;
+  }
+  .ps-activity-line .activity-value {
+    font-weight: 700;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+  .ps-activity-line .activity-sep {
+    color: var(--border-strong);
+  }
+
   .ps-summary-strip {
     background: var(--ag-soft);
     border-left: 3px solid var(--ag-color, var(--neutral));
@@ -809,6 +914,162 @@
     font-weight: 700; color: var(--text-primary);
     margin-right: 0.3rem;
   }
+
+  /* ─────────────────────────────────────────────────────────────────
+   * v1.3 Phase 3b C1 — bookkeeping-first per-statement card
+   *
+   * Three new visual blocks added to the per-statement card body:
+   *   1. .ps-headline-tiles      — 3-tile headline (Parsed / Included / Excluded)
+   *   2. .ps-activity-classification — Activity type breakdown (always visible)
+   *   3. .ps-vendor-review       — Subordinate 1099/vendor metrics (used in C1b)
+   *
+   * C1 (Session 1) renders blocks 1 & 2 ABOVE the existing 5-metric .ps-metrics
+   * row for side-by-side comparison. Block 3's CSS is added now so the CSS
+   * edit is atomic; the helper that renders it is defined but not called.
+   *
+   * Color treatment for the 3 tiles is DEFERRED. Three candidate options are
+   * provided below, all commented out. Decide with eyes on rendered output.
+   * ───────────────────────────────────────────────────────────────── */
+
+  .ps-headline-tiles {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.75rem;
+    margin: 0 0 1rem;
+  }
+  .ps-headline-tile {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 1rem 1.15rem;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-card);
+    position: relative;
+  }
+  .ps-headline-tile-label {
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 0.5rem;
+  }
+  .ps-headline-tile-value {
+    font-size: 2rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-primary);
+  }
+  .ps-headline-tile-sub {
+    font-size: 0.74rem;
+    color: var(--text-muted);
+    margin-top: 0.35rem;
+  }
+  .ps-headline-tile-unavailable .ps-headline-tile-value {
+    color: var(--text-muted);
+  }
+
+  /* Color treatment — DEFERRED. Uncomment ONE option after live review.
+
+     Option X — left accent border per role
+     .ps-headline-tile.parsed   { border-left: 3px solid var(--neutral); }
+     .ps-headline-tile.included { border-left: 3px solid var(--brand-blue); }
+     .ps-headline-tile.excluded { border-left: 3px solid var(--warn); }
+
+     Option Y — value color per role
+     .ps-headline-tile.parsed   .ps-headline-tile-value { color: var(--text-primary); }
+     .ps-headline-tile.included .ps-headline-tile-value { color: var(--brand-blue); }
+     .ps-headline-tile.excluded .ps-headline-tile-value { color: var(--warn); }
+
+     Option Z — bottom accent bar (matches Workspace KPI style)
+     .ps-headline-tile.parsed,
+     .ps-headline-tile.included,
+     .ps-headline-tile.excluded { padding-bottom: 1.15rem; }
+     .ps-headline-tile.parsed::after,
+     .ps-headline-tile.included::after,
+     .ps-headline-tile.excluded::after {
+       content: ""; position: absolute; left: 0; right: 0; bottom: 0;
+       height: 3px; border-bottom-left-radius: var(--radius-sm);
+       border-bottom-right-radius: var(--radius-sm);
+     }
+     .ps-headline-tile.parsed::after   { background: var(--neutral); }
+     .ps-headline-tile.included::after { background: var(--brand-blue); }
+     .ps-headline-tile.excluded::after { background: var(--warn); }
+  */
+
+  /* Activity classification — always visible, below the 3 tiles. */
+  .ps-activity-classification {
+    margin: 0 0 1rem;
+    padding: 0 0.15rem;
+  }
+  .ps-activity-classification-label {
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 0.3rem;
+  }
+  .ps-activity-classification-types {
+    font-size: 0.88rem;
+    color: var(--text-primary);
+    line-height: 1.5;
+  }
+  .ps-activity-classification-types .activity-type {
+    display: inline-block;
+    margin-right: 0.65rem;
+  }
+  .ps-activity-classification-types .activity-type-count {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .ps-activity-classification-types .activity-type-sep {
+    color: var(--border-strong);
+    margin-right: 0.65rem;
+  }
+  .ps-activity-classification-empty {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    font-style: italic;
+  }
+
+  /* Vendor / 1099 review subordinate section — CSS added in C1, USED in C1b. */
+  .ps-vendor-review {
+    border-top: 1px solid var(--border);
+    padding-top: 0.85rem;
+    margin: 0 0 0.85rem;
+  }
+  .ps-vendor-review-label {
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 0.3rem;
+  }
+  .ps-vendor-review-row {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    line-height: 1.5;
+  }
+  .ps-vendor-review-row .vr-segment {
+    display: inline-block;
+    margin-right: 0.55rem;
+  }
+  .ps-vendor-review-row .vr-label {
+    color: var(--text-secondary);
+  }
+  .ps-vendor-review-row .vr-value {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .ps-vendor-review-row .vr-sep {
+    color: var(--border-strong);
+    margin-right: 0.55rem;
+  }
+  /* ───────────────── end Phase 3b C1 additions ───────────────── */
 
   /* Card expansion — flagged vendors, tags, near-threshold, discrepancies */
   .ps-card-expansion {
@@ -1127,6 +1388,217 @@
   .loading-sub  { color: var(--text-muted); font-size: 0.88rem; margin-top: 0.4rem; }
 
   /* ─────────────────────────────────────────────────────────────────
+   * v1.2 — Phase 2A: Per-Statement expansion group structure
+   *   Three labeled groups (A: Bookkeeping Summary, B: Review Signals,
+   *   C: Cross-Statement Signals). Group A always renders. Groups B and C
+   *   render only when they have content.
+   *
+   * v1.3 enhancement: Group A renders a real transaction-type breakdown
+   * table when PDF Skill data is present (bookkeeping_breakdown field).
+   * Falls back to italic future-state note when data is absent.
+   *
+   * v1.3 Phase 2: status detail uses real parsed/included/excluded
+   * counts when PDF Skill data is present.
+   * ───────────────────────────────────────────────────────────────── */
+  .ps-group {
+    margin-bottom: 1.25rem;
+  }
+  .ps-group:last-child { margin-bottom: 0; }
+  .ps-group-title {
+    font-size: 0.85rem; font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 0.5rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--border);
+    letter-spacing: -0.005em;
+  }
+  .ps-group-helper {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    font-style: italic;
+    margin: 0.5rem 0 0;
+    line-height: 1.45;
+  }
+  .ps-group-status {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.7rem 0.95rem;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+  }
+  .ps-group-status .status-line {
+    display: flex; align-items: center; gap: 0.45rem;
+    font-weight: 600;
+  }
+  .ps-group-status .status-line svg {
+    width: 14px; height: 14px;
+    flex-shrink: 0;
+  }
+  .ps-group-status .status-success { color: var(--ok); }
+  .ps-group-status .status-partial { color: var(--warn); }
+  .ps-group-status .status-failed  { color: var(--err); }
+  .ps-group-status .status-detail {
+    margin-top: 0.4rem;
+    color: var(--text-secondary);
+    font-weight: 400;
+    font-size: 0.83rem;
+    line-height: 1.45;
+  }
+  .ps-cross-pointer {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin: 0.75rem 0 0;
+    font-style: italic;
+  }
+
+  /* ─────────────────────────────────────────────────────────────────
+   * v1.4 Phase 4C — Per-statement card reconciliation waterfall.
+   *
+   * Renders inside the expanded view of each per-statement card, between
+   * Group A (Statement-Level Bookkeeping Summary) and Group B (Bookkeeping
+   * Review Signals). Reads s.reconciliation_snapshot — the seven extracted
+   * balance fields (AS STATED on the statement) and the three server-side
+   * computed fields (calculated_ending, difference, status).
+   *
+   * Three render states:
+   *   - balanced     → green ✓ pill, full waterfall, difference $0.00 in green
+   *   - needs_review → amber ⚠ pill, full waterfall, difference in amber +
+   *                    optional model note (notes field) below waterfall
+   *   - unavailable  → small gray inline note, no waterfall
+   *
+   * Color treatment matches the per-statement Excel reconciliation block
+   * for visual consistency between the card and the workbook deliverable.
+   * ───────────────────────────────────────────────────────────────── */
+  .ps-recon-container {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.85rem 1rem 0.95rem;
+    margin-top: 0.5rem;
+  }
+  .ps-recon-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 0.85rem; margin-bottom: 0.65rem;
+  }
+  .ps-recon-head-title {
+    font-size: 0.82rem; font-weight: 700;
+    color: var(--text-primary);
+  }
+  .ps-recon-status-pill {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    padding: 0.25rem 0.65rem;
+    border-radius: 999px;
+    font-size: 0.74rem; font-weight: 700;
+    letter-spacing: 0.01em;
+    flex-shrink: 0;
+  }
+  .ps-recon-status-pill svg { width: 12px; height: 12px; }
+  .ps-recon-status-pill.balanced     { background: var(--ok-soft);   color: var(--ok); }
+  .ps-recon-status-pill.needs-review { background: var(--warn-soft); color: var(--warn); }
+  .ps-recon-status-pill.unavailable  { background: var(--bg-section); color: var(--text-muted); }
+
+  .ps-recon-table {
+    width: 100%; border-collapse: collapse;
+    font-size: 0.85rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .ps-recon-table td {
+    padding: 0.35rem 0.5rem;
+    color: var(--text-primary);
+  }
+  .ps-recon-table td.amount {
+    text-align: right; font-weight: 600;
+    white-space: nowrap;
+  }
+  .ps-recon-table .recon-row td {
+    border-bottom: 1px solid transparent;
+  }
+  .ps-recon-table .recon-rule td {
+    padding: 0;
+    border-top: 1px solid var(--border);
+    height: 1px;
+  }
+  .ps-recon-table .recon-row.calculated td,
+  .ps-recon-table .recon-row.reported td {
+    color: var(--text-secondary);
+  }
+  .ps-recon-table .recon-row.difference td {
+    padding-top: 0.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+  .ps-recon-table .recon-row.difference.balanced td.amount     { color: var(--ok); }
+  .ps-recon-table .recon-row.difference.needs-review td.amount { color: var(--warn); }
+
+  .ps-recon-note {
+    margin-top: 0.65rem;
+    padding: 0.55rem 0.75rem;
+    background: var(--warn-soft);
+    border-left: 3px solid var(--warn);
+    border-radius: 4px;
+    font-size: 0.8rem;
+    color: var(--text-primary);
+    line-height: 1.45;
+  }
+  .ps-recon-note .note-label {
+    font-weight: 700;
+    color: var(--warn);
+    margin-right: 0.3rem;
+  }
+
+  .ps-recon-unavailable {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    font-style: italic;
+    padding: 0.5rem 0;
+  }
+
+  /* ─────────────────────────────────────────────────────────────────
+   * v1.4 Phase 5A — Source B (extraction completeness) status indicator.
+   *
+   * Compact one-line status sitting on the per-statement card, immediately
+   * after the Source A reconciliation waterfall. Source B's bucket-level
+   * detail (the 5-row stated/row_sum/delta table) lives in the per-statement
+   * Excel workbook only — the card surface intentionally shows status only.
+   *
+   * Three render states:
+   *   complete     → green ✓ "Extraction complete"
+   *   incomplete   → amber ⚠ "Extraction incomplete — see workbook"
+   *   unavailable  → muted gray "Extraction check unavailable"
+   *
+   * Visual style mirrors the .ps-recon-status-pill treatment for consistency
+   * between the two integrity signals.
+   * ───────────────────────────────────────────────────────────────── */
+  .ps-extraction-check {
+    display: flex; align-items: center; gap: 0.55rem;
+    padding: 0.55rem 0.85rem;
+    margin-top: 0.5rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.85rem;
+  }
+  .ps-extraction-check-icon {
+    width: 16px; height: 16px;
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .ps-extraction-check-icon svg { width: 16px; height: 16px; }
+  .ps-extraction-check-label {
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .ps-extraction-check.complete    .ps-extraction-check-icon  { color: var(--ok); }
+  .ps-extraction-check.complete    .ps-extraction-check-label { color: var(--ok); }
+  .ps-extraction-check.incomplete  { background: var(--warn-soft); border-color: #FBC79A; }
+  .ps-extraction-check.incomplete  .ps-extraction-check-icon  { color: var(--warn); }
+  .ps-extraction-check.incomplete  .ps-extraction-check-label { color: var(--warn); }
+  .ps-extraction-check.unavailable .ps-extraction-check-icon  { color: var(--text-muted); }
+  .ps-extraction-check.unavailable .ps-extraction-check-label { color: var(--text-muted); font-weight: 500; }
+
+  /* ─────────────────────────────────────────────────────────────────
    * Responsive
    * ───────────────────────────────────────────────────────────────── */
   @media (max-width: 1024px) {
@@ -1160,6 +1632,7 @@
     .glance-row { grid-template-columns: repeat(2, 1fr); }
     .vs-grid-4 { grid-template-columns: 1fr; }
     .ps-metrics { grid-template-columns: repeat(2, 1fr); }
+    .ps-headline-tiles { grid-template-columns: 1fr; }   /* v1.3 Phase 3b C1 */
     .field-row { grid-template-columns: 1fr; gap: 0.4rem; }
     .tech-grid { grid-template-columns: 1fr; }
   }
@@ -1183,7 +1656,7 @@
       <div class="brand">
         <div class="brand-icon">P</div>
         <div class="brand-text">
-          <h1>PREPARE Core v1.1</h1>
+          <h1>PREPARE Core v1.3</h1>
           <div class="subtitle">Statement Reconciliation Workspace</div>
         </div>
       </div>
@@ -1307,42 +1780,28 @@
             </div>
           </div>
 
-          <div class="field-row">
-            <label for="lang-select">Output Language</label>
-            <select id="lang-select">
-              <option value="English" selected>English</option>
-              <option value="한국어">한국어 (Korean)</option>
-              <option value="Español">Español (Spanish)</option>
-              <option value="中文">中文 (Chinese)</option>
-              <option value="繁體中文">繁體中文 (Traditional Chinese)</option>
-              <option value="Français">Français (French)</option>
-              <option value="日本語">日本語 (Japanese)</option>
-              <option value="Deutsch">Deutsch (German)</option>
-              <option value="Русский">Русский (Russian)</option>
-              <option value="العربية">العربية (Arabic)</option>
-            </select>
-          </div>
-
+          <!-- v1.3: three engine options with PDF Skill as recommended default -->
           <div class="field-row">
             <label for="engine-select">Processing Engine</label>
             <select id="engine-select">
-              <option value="rule_based">Rule-based — Fast · Free</option>
-              <option value="ai_assisted">AI-assisted — Single agent</option>
-              <option value="multi_agent" selected>Multi-agent — Parallel + cross-validation</option>
+              <option value="pdf_skill" selected>PDF Skill — Recommended (accuracy)</option>
+              <option value="rule_based">Rule-based — Fast / free fallback</option>
+              <option value="multi_agent">Multi-agent — Experimental (legacy comparison)</option>
             </select>
           </div>
 
           <div class="advanced-toggle" id="advanced-toggle">Advanced (extraction model override)</div>
           <div class="advanced-content" id="advanced-content">
             <div class="advanced-warn">
-              ⚠ Default Haiku is recommended. Larger models risk hitting rate limits and significantly increase cost.
+              ⚠ Model applies to PDF Skill and Multi-agent engines. Sonnet is the default and
+              sufficient for most layouts. Opus is slightly faster on some PDFs but costs
+              more. Rule-based engine does not use this setting.
             </div>
             <div class="field-row">
               <label for="extraction-model-select">Extraction Model</label>
               <select id="extraction-model-select">
-                <option value="claude-haiku-4-5-20251001" selected>Haiku — recommended</option>
-                <option value="claude-sonnet-4-6">Sonnet — higher accuracy</option>
-                <option value="claude-opus-4-7">Opus — highest cost</option>
+                <option value="claude-sonnet-4-6" selected>Sonnet — recommended for PDF extraction</option>
+                <option value="claude-opus-4-7">Opus — advanced / high-quality extraction</option>
               </select>
             </div>
           </div>
@@ -1358,7 +1817,7 @@
     <div class="loading" id="loading">
       <div class="spinner"></div>
       <div class="loading-text" id="loading-text">Processing your statements…</div>
-      <div class="loading-sub">This may take 10–60 seconds depending on engine and PDF count.</div>
+      <div class="loading-sub" id="loading-sub">This may take 10–60 seconds depending on engine and PDF count.</div>
     </div>
 
     <!-- ────────── RESULTS (4 views) ────────── -->
@@ -1397,6 +1856,11 @@
 
         <!-- Validation overview (4 tiles) -->
         <div class="vs-grid-4" id="vs-grid"></div>
+
+        <!-- v1.4 Phase 4E (web tile) — Reconciliation roll-up.
+             Mirrors the STATEMENT RECONCILIATION block in the master Excel
+             Executive Summary. Rendered by renderReconciliationRollup(). -->
+        <div id="ws-recon-container"></div>
 
         <!-- Workbook CTA -->
         <div class="workbook-cta" id="workbook-cta-block" style="margin-top: 1rem;">
@@ -1440,8 +1904,12 @@
             </div>
             <div class="view-title">
               <h1>Per-Statement Review</h1>
+              <!-- v1.3 Phase 2: subtitle rewritten with bookkeeping framing —
+                   explicit about included/excluded distinction. -->
               <div class="view-subtitle">
-                One card per processed statement. Expand to see flagged vendors and validation detail.
+                One card per statement. Reviews how each PDF was parsed — included vendor payments,
+                excluded rows (payroll, balance, etc.), and statement-level signals — before
+                cross-statement reconciliation.
               </div>
             </div>
           </div>
@@ -1473,7 +1941,8 @@
             <div class="view-title">
               <h1>Consolidated Validation &amp; Workbook</h1>
               <div class="view-subtitle">
-                Cross-statement findings and the master Excel deliverable.
+                Across all uploaded statements: vendor matches, name variants,
+                near-threshold review, and discrepancy alerts.
               </div>
             </div>
           </div>
@@ -1564,17 +2033,37 @@
 
 <script>
   /* ─────────────────────────────────────────────────────────────────
-   * PREPARE Core v1.1 frontend — landscape workspace layout
-   * 4-item sidebar, hash-based routing, dedicated views.
-   * Renders against ProcessResponse v1.0 schema (unchanged contract).
+   * PREPARE Core v1.3 frontend — Phase 2 label rework
+   *
+   * Phase 2 changes from v1.3 baseline:
+   *   - Workspace KPI #1: "Total Transactions" → "Included Payments"
+   *     Sublabel changed to "Vendor payments in 1099 aggregation".
+   *   - Per-Statement view subtitle rewritten with bookkeeping framing.
+   *   - Per-Statement card metric "Transactions" → "Included Payments".
+   *   - New activity line below metrics (PDF Skill only): shows
+   *     parsed/included/excluded counts inline. Hidden for rule-based.
+   *   - Group A breakdown table title: "Excluded Transaction Breakdown"
+   *     → "Statement Activity Breakdown" (more accurate — table shows
+   *     ALL types, not just excluded).
+   *   - Group A helper text rewritten.
+   *   - Group A status detail: shows real parsed/included/excluded
+   *     counts and brief excluded-types breakdown (PDF Skill only).
+   *     Falls back to generic message for rule-based.
+   *
+   * All Phase 2 changes are pure presentation. No backend changes,
+   * no schema changes, no new fields. Reads existing response fields:
+   * bookkeeping_breakdown, excluded_count, transaction_count.
+   *
+   * v1.3 (baseline, retained):
+   *   - Engine dropdown: PDF Skill (default), Rule-based, Multi-agent.
+   *   - Loading screen text adapts to engine.
+   *   - Per-statement card head shows engine indicator pill.
+   *
+   * v1.2 — Phase 2A retained: Per-Statement Group A/B/C structure.
    * ───────────────────────────────────────────────────────────────── */
 
   const EXPECTED_SCHEMA_VERSION = "1.0";
   const VALID_ROUTES = ["workspace", "per-statement", "consolidated", "technical"];
-  // Canonical sheet count for the v1.1 master workbook. The frontend uses
-  // this as the source of truth so sheet displays stay correct even if the
-  // backend's WorkbookInfo.sheet_count is stale. The actual sheet list is
-  // built in renderMasterWorkbookCard().
   const CANONICAL_SHEET_COUNT = 5;
 
   // ─── Element refs ───
@@ -1585,7 +2074,6 @@
   const csvDrop        = document.getElementById('csv-drop');
   const csvLabel       = document.getElementById('csv-label');
   const csvSub         = document.getElementById('csv-sub');
-  const langSelect     = document.getElementById('lang-select');
   const engineSelect   = document.getElementById('engine-select');
   const extractionSel  = document.getElementById('extraction-model-select');
   const advancedToggle = document.getElementById('advanced-toggle');
@@ -1595,6 +2083,7 @@
   const resultsSection = document.getElementById('results-section');
   const loading        = document.getElementById('loading');
   const loadingText    = document.getElementById('loading-text');
+  const loadingSub     = document.getElementById('loading-sub');
   const uploadErrorBanner = document.getElementById('upload-error-banner');
   const warnBanner     = document.getElementById('warn-banner');
   const headerStatusArea = document.getElementById('header-status-area');
@@ -1606,9 +2095,38 @@
   // State
   let pdfFiles = [];
   let lastResponse = null;
-  let cardsExpanded = {};      // per-statement expansion state by index
+  let cardsExpanded = {};
   let allExpandedToggle = false;
   let cvAllExpandedToggle = false;
+
+  // v1.3: engine display labels (also used on per-statement card indicator)
+  const ENGINE_LABELS = {
+    pdf_skill:   'PDF Skill',
+    rule_based:  'Rule-based',
+    multi_agent: 'Multi-agent',
+    ai_assisted: 'AI Assisted',
+  };
+
+  // v1.3: friendly labels for transaction types in bookkeeping breakdown
+  const TRANSACTION_TYPE_LABELS = {
+    vendor_payment:   'Vendor payments',
+    check_payment:    'Checks',
+    deposit:          'Deposits',
+    payroll_deposit:  'Payroll deposits',
+    balance_line:     'Balance lines',
+    transfer:         'Transfers',
+    bank_fee:         'Bank fees',
+    interest:         'Interest',
+    reimbursement:    'Reimbursements',
+    owner_draw:       'Owner draws',
+    metadata:         'Metadata rows',
+    unknown:          'Unclassified',
+  };
+  const TRANSACTION_TYPE_ORDER = [
+    'vendor_payment', 'check_payment', 'deposit', 'payroll_deposit',
+    'balance_line', 'transfer', 'bank_fee', 'interest',
+    'reimbursement', 'owner_draw', 'metadata', 'unknown'
+  ];
 
   /* ─── Inline SVG icons ─────────────────────────────────────────── */
   const ICONS = {
@@ -1625,7 +2143,228 @@
     info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
     chevron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>',
     download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+    checkSimple: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+    warnSimple: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
   };
+
+  /* ─────────────────────────────────────────────────────────────────
+   * v1.3 Phase 2: helpers for parsed/included/excluded counts
+   *
+   * The frontend already has bookkeeping_breakdown and excluded_count
+   * from the schema (added in Phase 1). These helpers turn raw counts
+   * into the strings used in the new info line and status detail.
+   * ───────────────────────────────────────────────────────────────── */
+
+  function hasPdfSkillData(s) {
+    return !!(s.bookkeeping_breakdown &&
+              typeof s.bookkeeping_breakdown === 'object' &&
+              Object.keys(s.bookkeeping_breakdown).length > 0);
+  }
+
+  function computeParsedCounts(s) {
+    // Included = transaction_count (rows that fed 1099 aggregation).
+    // Excluded = excluded_count (added to schema in Phase 1).
+    // Parsed = sum of both (every row the PDF Skill agent saw).
+    const included = s.transaction_count || 0;
+    const excluded = s.excluded_count || 0;
+    const parsed = included + excluded;
+    return { parsed, included, excluded };
+  }
+
+  // Format the excluded-type breakdown into a short prose phrase.
+  // Example: {payroll_deposit: 6, balance_line: 2} → "6 payroll deposits, 2 balance lines"
+  // Returns "" if no excluded types present.
+  //
+  // v1.4 Phase 4E follow-up (card mirror of the per-statement Excel fix):
+  // INCLUDED types (vendor_payment, check_payment) are skipped — a check
+  // written to a payee is an included 1099-relevant payment, not an excluded
+  // row, so it must not appear in the "excluded (…)" parenthetical. The Excel
+  // fix achieves this by sourcing from include_for_1099==NO rows; the card
+  // doesn't have per-row data in the response, so it uses the equivalent
+  // heuristic of skipping both included types. Also makes the label singular
+  // when count == 1 (was always plural — "1 checks" → "1 check").
+  function formatExcludedBreakdown(breakdown) {
+    if (!breakdown || typeof breakdown !== 'object') return '';
+    const INCLUDED_TYPES = new Set(['vendor_payment', 'check_payment']);
+    // Singular forms for the labels TRANSACTION_TYPE_LABELS holds in plural.
+    const SINGULAR = {
+      deposit: 'deposit',
+      payroll_deposit: 'payroll deposit',
+      balance_line: 'balance line',
+      transfer: 'transfer',
+      bank_fee: 'bank fee',
+      interest: 'interest',
+      reimbursement: 'reimbursement',
+      owner_draw: 'owner draw',
+      metadata: 'metadata row',
+      unknown: 'unclassified',
+    };
+    const labelFor = (type, count) => {
+      if (count === 1 && SINGULAR[type]) return SINGULAR[type];
+      return (TRANSACTION_TYPE_LABELS[type] || type).toLowerCase();
+    };
+    const parts = [];
+    for (const type of TRANSACTION_TYPE_ORDER) {
+      if (INCLUDED_TYPES.has(type)) continue;
+      const count = breakdown[type];
+      if (count && count > 0) {
+        parts.push(`${count} ${labelFor(type, count)}`);
+      }
+    }
+    // Catch any unenumerated types (defensive)
+    for (const type of Object.keys(breakdown)) {
+      if (INCLUDED_TYPES.has(type) || TRANSACTION_TYPE_ORDER.includes(type)) continue;
+      const count = breakdown[type];
+      if (count && count > 0) {
+        parts.push(`${count} ${type.replace(/_/g, ' ')}`);
+      }
+    }
+    return parts.join(', ');
+  }
+
+  /* ─────────────────────────────────────────────────────────────────
+   * v1.3 Phase 3b C1 — per-statement card render helpers
+   *
+   * renderHeadlineTiles(s)         — 3-tile headline (Parsed/Included/Excluded)
+   * renderActivityClassification(s)— always-visible activity type breakdown
+   * renderVendorReview(s)          — demoted 1099/vendor row (defined in C1,
+   *                                  called in C1b)
+   *
+   * All three degrade gracefully for rule-based engine output (no
+   * bookkeeping_breakdown / excluded_count == 0).
+   * ───────────────────────────────────────────────────────────────── */
+
+  function renderHeadlineTiles(s) {
+    const hasPdfSkill = hasPdfSkillData(s);
+    const { parsed, included, excluded } = computeParsedCounts(s);
+
+    const excludedDisplay = hasPdfSkill
+      ? excluded.toString()
+      : '<span title="Row-level classification available when using PDF Skill engine.">—</span>';
+
+    const excludedTileClass = hasPdfSkill
+      ? 'ps-headline-tile excluded'
+      : 'ps-headline-tile excluded ps-headline-tile-unavailable';
+
+    // When rule-based, parsed === included (no excluded data); show included
+    // count in both tiles. computeParsedCounts handles this via excluded_count=0.
+    return `
+      <div class="ps-headline-tiles">
+        <div class="ps-headline-tile parsed">
+          <span class="ps-headline-tile-label">Parsed</span>
+          <span class="ps-headline-tile-value">${parsed}</span>
+          <span class="ps-headline-tile-sub">rows seen</span>
+        </div>
+        <div class="ps-headline-tile included">
+          <span class="ps-headline-tile-label">Included</span>
+          <span class="ps-headline-tile-value">${included}</span>
+          <span class="ps-headline-tile-sub">for 1099</span>
+        </div>
+        <div class="${excludedTileClass}">
+          <span class="ps-headline-tile-label">Excluded</span>
+          <span class="ps-headline-tile-value">${excludedDisplay}</span>
+          <span class="ps-headline-tile-sub">filtered</span>
+        </div>
+      </div>`;
+  }
+
+  function renderActivityClassification(s) {
+    const hasPdfSkill = hasPdfSkillData(s);
+
+    if (!hasPdfSkill) {
+      return `
+        <div class="ps-activity-classification">
+          <div class="ps-activity-classification-label">Activity Classification</div>
+          <div class="ps-activity-classification-empty">
+            Row classification available with PDF Skill engine.
+          </div>
+        </div>`;
+    }
+
+    const b = s.bookkeeping_breakdown;
+    const segments = [];
+    // Render enumerated types in canonical order — only present (non-zero) types.
+    for (const type of TRANSACTION_TYPE_ORDER) {
+      const count = b[type];
+      if (count && count > 0) {
+        const label = TRANSACTION_TYPE_LABELS[type] || type;
+        segments.push(
+          `<span class="activity-type">${escapeHtml(label)} ` +
+          `<span class="activity-type-count">${count}</span></span>`
+        );
+      }
+    }
+    // Defensive: catch any unenumerated types the backend might emit.
+    for (const type of Object.keys(b)) {
+      if (TRANSACTION_TYPE_ORDER.includes(type)) continue;
+      const count = b[type];
+      if (count && count > 0) {
+        segments.push(
+          `<span class="activity-type">${escapeHtml(type.replace(/_/g, ' '))} ` +
+          `<span class="activity-type-count">${count}</span></span>`
+        );
+      }
+    }
+
+    if (segments.length === 0) {
+      return `
+        <div class="ps-activity-classification">
+          <div class="ps-activity-classification-label">Activity Classification</div>
+          <div class="ps-activity-classification-empty">No activity classified.</div>
+        </div>`;
+    }
+
+    return `
+      <div class="ps-activity-classification">
+        <div class="ps-activity-classification-label">Activity Classification</div>
+        <div class="ps-activity-classification-types">
+          ${segments.join('<span class="activity-type-sep">·</span>')}
+        </div>
+      </div>`;
+  }
+
+  // Defined in C1, wired into renderAgentCards() in C1b (Session 2).
+  function renderVendorReview(s) {
+    const totalAmount = '$' + Number(s.total_amount || 0).toLocaleString(
+      'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+    );
+    const vendors    = s.vendor_count || 0;
+    const review     = s.review_needed || 0;
+    const overThresh = s.vendors_over_threshold || 0;
+    const confidence = Math.round((s.extraction_confidence || 0) * 100);
+
+    return `
+      <div class="ps-vendor-review">
+        <div class="ps-vendor-review-label">Vendor / 1099 Review</div>
+        <div class="ps-vendor-review-row">
+          <span class="vr-segment">
+            <span class="vr-label">Included Total</span>
+            <span class="vr-value">${totalAmount}</span>
+          </span>
+          <span class="vr-sep">·</span>
+          <span class="vr-segment">
+            <span class="vr-label">Vendors</span>
+            <span class="vr-value">${vendors}</span>
+          </span>
+          <span class="vr-sep">·</span>
+          <span class="vr-segment">
+            <span class="vr-label">Review Needed</span>
+            <span class="vr-value">${review}</span>
+          </span>
+          <span class="vr-sep">·</span>
+          <span class="vr-segment">
+            <span class="vr-label">Over $600</span>
+            <span class="vr-value">${overThresh}</span>
+          </span>
+          <span class="vr-sep">·</span>
+          <span class="vr-segment">
+            <span class="vr-label">Confidence</span>
+            <span class="vr-value">${confidence}%</span>
+          </span>
+        </div>
+      </div>`;
+  }
+  /* ───────────────── end Phase 3b C1 helpers ───────────────── */
 
   /* ─── PDF list management ─── */
   addPdfBtn.addEventListener('click', () => pdfFileInput.click());
@@ -1679,6 +2418,8 @@
   });
 
   /* ─── Engine change ─── */
+  // v1.3: advanced toggle (model override) is shown for both pdf_skill and
+  // multi_agent. Hidden for rule_based (which doesn't use the model setting).
   engineSelect.addEventListener('change', () => {
     const e = engineSelect.value;
     advancedToggle.style.display = (e === 'rule_based') ? 'none' : 'inline-block';
@@ -1709,17 +2450,26 @@
     warnBanner.classList.remove('show');
 
     const engine = engineSelect.value;
-    const engineLabel = engine === 'rule_based' ? 'rule-based pipeline'
-                      : engine === 'ai_assisted' ? 'AI-assisted agent'
-                      : 'multi-agent + validation';
-    loadingText.textContent = `Running ${engineLabel}…`;
+
+    // v1.3: engine-specific loading messages
+    if (engine === 'pdf_skill') {
+      const n = pdfFiles.length;
+      loadingText.textContent = `Running PDF Skill extraction…`;
+      loadingSub.textContent = `Expect 1–4 minutes per PDF. Processing ${n} statement${n === 1 ? '' : 's'} sequentially.`;
+    } else if (engine === 'rule_based') {
+      loadingText.textContent = `Running rule-based pipeline…`;
+      loadingSub.textContent = `Fast / free fallback path. Typically 5–10 seconds total.`;
+    } else {
+      loadingText.textContent = `Running multi-agent + cross-validation…`;
+      loadingSub.textContent = `This may take 10–60 seconds depending on PDF count and complexity.`;
+    }
 
     const fd = new FormData();
     pdfFiles.forEach(f => fd.append('pdf_files', f));
     if (csvInput.files[0]) fd.append('vendor_list', csvInput.files[0]);
     fd.append('engine', engine);
     fd.append('extraction_model', extractionSel.value);
-    fd.append('language', langSelect.value);
+    fd.append('language', 'English');
 
     try {
       const res = await fetch('/api/process', { method: 'POST', body: fd });
@@ -1749,7 +2499,6 @@
 
   /* ─── Show results: switch to landscape mode, render all views ─── */
   function showResults(data) {
-    // Switch app shell into "with sidebar" mode
     appShell.classList.remove('no-sidebar');
     main.classList.remove('upload');
     sidebar.style.display = 'flex';
@@ -1760,13 +2509,13 @@
     renderKpiGrid(data.summary);
     renderGlanceStrip(data);
     renderValidationOverview(data);
+    renderReconciliationRollup(data);
     renderWorkbookCTA(data);
     renderConsolidatedView(data);
     renderAgentCards(data.statements, data.validation);
     renderTechnical(data.technical);
     updateNavCounts(data);
 
-    // Default route on results-arrival
     if (!window.location.hash || !VALID_ROUTES.includes(window.location.hash.slice(1))) {
       window.location.hash = '#workspace';
     } else {
@@ -1838,14 +2587,18 @@
   }
 
   /* ─── KPI grid ─── */
+  // v1.3 Phase 2: KPI card #1 renamed "Total Transactions" → "Included Payments"
+  // and sublabel updated. The underlying count is unchanged — for PDF Skill,
+  // this is the count of included vendor-payment rows; for rule-based, it's
+  // every row the pipeline aggregated (same concept, different mechanism).
   function renderKpiGrid(s) {
     const grid = document.getElementById('kpi-grid');
     const fmt = (n) => Number(n || 0).toLocaleString();
     const fmtCurrency = (n) => '$' + Number(n || 0).toLocaleString('en-US',
                               {minimumFractionDigits: 2, maximumFractionDigits: 2});
     const cards = [
-      { cls: 'k-blue',   icon: ICONS.file,   label: 'Total Transactions',
-        value: fmt(s.total_transactions),   sub: 'Across all statements' },
+      { cls: 'k-blue',   icon: ICONS.file,   label: 'Included Payments',
+        value: fmt(s.total_transactions),   sub: 'Vendor payments in 1099 aggregation' },
       { cls: 'k-green',  icon: ICONS.users,  label: 'Unique Vendors',
         value: fmt(s.unique_vendors),       sub: 'Unique across all statements' },
       { cls: 'k-purple', icon: ICONS.dollar, label: 'Total Reconciled',
@@ -1925,9 +2678,6 @@
       </div>`).join('');
     document.getElementById('vs-grid').innerHTML = html;
 
-    // Same 4 tiles on Consolidated view (we use the V categories there too,
-    // swapping Review Needed for Near-Threshold per spec — that's the
-    // "matches the 4 collapsibles" framing)
     const cvTiles = [
       { cls: 'vs-green',  icon: ICONS.users,  value: (v.cross_statement_matches || []).length,
         label: 'Cross-Statement Matches', desc: 'Vendors matched across multiple statements' },
@@ -1949,6 +2699,222 @@
       </div>`).join('');
   }
 
+  /* ─────────────────────────────────────────────────────────────────
+   * v1.4 Phase 4E (web tile) — render the Workspace reconciliation roll-up.
+   *
+   * Reads three counts from data.summary (reconciliation_balanced /
+   * needs_review / unavailable) and the existing successful_count, computes a
+   * glass-half-full headline ("X of N statements reconcile"), and renders
+   * three pills. needs_review goes amber when > 0. Hidden gracefully when
+   * the run is empty (recon_total == 0) or the fields are missing entirely
+   * (older response payload, backward compatibility).
+   * ───────────────────────────────────────────────────────────────── */
+  function renderReconciliationRollup(data) {
+    const container = document.getElementById('ws-recon-container');
+    if (!container) return;
+    const s = data.summary || {};
+    const balanced     = s.reconciliation_balanced    || 0;
+    const needsReview  = s.reconciliation_needs_review || 0;
+    const unavailable  = s.reconciliation_unavailable  || 0;
+    const total = balanced + needsReview + unavailable;
+
+    if (total === 0) {
+      // Empty / no successful statements — hide the section entirely.
+      container.innerHTML = '';
+      return;
+    }
+
+    const headline = `${balanced} of ${total} statements reconcile`;
+    const reviewPillClass = needsReview > 0 ? 'ws-recon-pill flagged' : 'ws-recon-pill';
+
+    container.innerHTML = `
+      <div class="ws-recon">
+        <div class="ws-recon-head">
+          <div class="ws-recon-title">Statement Reconciliation</div>
+          <div class="ws-recon-headline">${headline}</div>
+        </div>
+        <div class="ws-recon-row">
+          <div class="ws-recon-pill balanced">
+            <div class="pill-count">${balanced}</div>
+            <div class="pill-text">
+              <div class="pill-label">Balanced</div>
+              <div class="pill-desc">Stated totals reconcile</div>
+            </div>
+          </div>
+          <div class="${reviewPillClass}">
+            <div class="pill-count">${needsReview}</div>
+            <div class="pill-text">
+              <div class="pill-label">Needs Review</div>
+              <div class="pill-desc">Balance discrepancy to verify</div>
+            </div>
+          </div>
+          <div class="ws-recon-pill unavailable">
+            <div class="pill-count">${unavailable}</div>
+            <div class="pill-text">
+              <div class="pill-label">Unavailable</div>
+              <div class="pill-desc">No balance summary extracted</div>
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  /* ─────────────────────────────────────────────────────────────────
+   * v1.4 Phase 4C — render the per-statement card reconciliation waterfall.
+   *
+   * Called from buildExpansionContent between Group A and Group B. Reads
+   * s.reconciliation_snapshot (carried through pipeline → server → Statement)
+   * and returns the HTML string for the waterfall block. Returns '' (empty
+   * string) if no snapshot is present at all (older response payload or
+   * non-PDF-Skill engine), so the caller can safely concat without a guard.
+   *
+   * Three render paths:
+   *   1. snapshot missing entirely  → '' (nothing rendered)
+   *   2. status === 'unavailable'   → small "no balance summary" inline note
+   *   3. status === 'balanced' or 'needs_review' → full waterfall
+   *
+   * The full waterfall mirrors the per-statement Excel reconciliation block:
+   *   Beginning balance
+   *   + Deposits / - Withdrawals / - Checks / - Transfers / - Fees
+   *     (only shows rows where the snapshot has a non-null value > 0,
+   *      so a statement without checks doesn't show "- Checks $0.00")
+   *   Calculated ending balance
+   *   Reported ending balance (as stated)
+   *   Difference (colored by status)
+   *   [optional: model's verbatim note when needs_review]
+   * ───────────────────────────────────────────────────────────────── */
+  function renderReconciliation(s) {
+    const r = s.reconciliation_snapshot;
+    if (!r) return '';   // No snapshot — render nothing (rule_based engine etc.)
+
+    const fmt = (n) => '$' + Number(n || 0).toLocaleString(
+      'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+    );
+
+    // Unavailable: snapshot exists but extraction was incomplete
+    if (r.status === 'unavailable') {
+      return `
+        <div class="ps-group">
+          <h4 class="ps-group-title">Statement Reconciliation</h4>
+          <div class="ps-recon-container">
+            <div class="ps-recon-head">
+              <div class="ps-recon-head-title">Balance check</div>
+              <span class="ps-recon-status-pill unavailable">Unavailable</span>
+            </div>
+            <div class="ps-recon-unavailable">
+              No balance summary was extracted for this statement — reconciliation cannot be computed.
+            </div>
+          </div>
+        </div>`;
+    }
+
+    // Balanced or needs_review: render the full waterfall
+    const isBalanced = (r.status === 'balanced');
+    const pillClass  = isBalanced ? 'balanced' : 'needs-review';
+    const pillIcon   = isBalanced
+      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
+      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+    const pillLabel  = isBalanced ? 'Balanced' : 'Needs Review';
+
+    // Build activity rows — only show line items that exist (non-null) and
+    // are non-zero. Prevents a clean checking-only statement from showing
+    // "- Checks $0.00" and "- Transfers $0.00" rows that add no information.
+    const activityRows = [];
+    if (r.total_deposits   != null && r.total_deposits   > 0) {
+      activityRows.push(`<tr class="recon-row"><td>+ Deposits</td><td class="amount">${fmt(r.total_deposits)}</td></tr>`);
+    }
+    if (r.total_withdrawals != null && r.total_withdrawals > 0) {
+      activityRows.push(`<tr class="recon-row"><td>− Withdrawals</td><td class="amount">${fmt(r.total_withdrawals)}</td></tr>`);
+    }
+    if (r.checks    != null && r.checks    > 0) {
+      activityRows.push(`<tr class="recon-row"><td>− Checks</td><td class="amount">${fmt(r.checks)}</td></tr>`);
+    }
+    if (r.transfers != null && r.transfers > 0) {
+      activityRows.push(`<tr class="recon-row"><td>− Transfers</td><td class="amount">${fmt(r.transfers)}</td></tr>`);
+    }
+    if (r.fees      != null && r.fees      > 0) {
+      activityRows.push(`<tr class="recon-row"><td>− Fees</td><td class="amount">${fmt(r.fees)}</td></tr>`);
+    }
+
+    // Note row (model's verbatim observation) — only render for needs_review
+    const noteHtml = (!isBalanced && r.notes)
+      ? `<div class="ps-recon-note">
+           <span class="note-label">Note:</span>${escapeHtml(r.notes)}
+         </div>`
+      : '';
+
+    return `
+      <div class="ps-group">
+        <h4 class="ps-group-title">Statement Reconciliation</h4>
+        <div class="ps-recon-container">
+          <div class="ps-recon-head">
+            <div class="ps-recon-head-title">Balance check</div>
+            <span class="ps-recon-status-pill ${pillClass}">
+              ${pillIcon}
+              ${pillLabel}
+            </span>
+          </div>
+          <table class="ps-recon-table">
+            <tbody>
+              <tr class="recon-row"><td>Beginning balance</td><td class="amount">${fmt(r.beginning_balance)}</td></tr>
+              ${activityRows.join('')}
+              <tr class="recon-rule"><td colspan="2"></td></tr>
+              <tr class="recon-row calculated"><td>Calculated ending</td><td class="amount">${fmt(r.calculated_ending_balance)}</td></tr>
+              <tr class="recon-row reported"><td>Reported ending (as stated)</td><td class="amount">${fmt(r.reported_ending_balance)}</td></tr>
+              <tr class="recon-rule"><td colspan="2"></td></tr>
+              <tr class="recon-row difference ${pillClass}"><td>Difference</td><td class="amount">${fmt(r.difference)}</td></tr>
+            </tbody>
+          </table>
+          ${noteHtml}
+        </div>
+      </div>`;
+  }
+
+  /* ─────────────────────────────────────────────────────────────────
+   * v1.4 Phase 5A — render the per-statement card Source B status indicator.
+   *
+   * Called from buildExpansionContent immediately after renderReconciliation.
+   * Reads s.extraction_check (carried through pipeline → server → Statement
+   * by the Source B build on May 28) and returns one of four outputs:
+   *
+   *   no extraction_check at all      → '' (rule_based engine, older payload)
+   *   status === 'complete'           → green ✓ "Extraction complete"
+   *   status === 'incomplete'         → amber ⚠ "Extraction incomplete — see workbook"
+   *   status === 'unavailable'        → muted gray "Extraction check unavailable"
+   *
+   * Bucket-level detail (stated / row_sum / delta per bucket) lives only in
+   * the per-statement Excel workbook by design — the card surface shows
+   * status only, matching the locked Phase 5A spec.
+   * ───────────────────────────────────────────────────────────────── */
+  function renderExtractionCheck(s) {
+    const ec = s.extraction_check;
+    if (!ec) return '';   // No data — render nothing (rule_based engine etc.)
+
+    const status = ec.status;
+    let stateClass, icon, label;
+
+    if (status === 'complete') {
+      stateClass = 'complete';
+      icon  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+      label = 'Extraction complete';
+    } else if (status === 'incomplete') {
+      stateClass = 'incomplete';
+      icon  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+      label = 'Extraction incomplete — see workbook';
+    } else {
+      // status === 'unavailable' or any unrecognized value
+      stateClass = 'unavailable';
+      icon  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+      label = 'Extraction check unavailable';
+    }
+
+    return `
+      <div class="ps-extraction-check ${stateClass}">
+        <span class="ps-extraction-check-icon">${icon}</span>
+        <span class="ps-extraction-check-label">${label}</span>
+      </div>`;
+  }
+
   /* ─── Workspace workbook CTA ─── */
   function renderWorkbookCTA(data) {
     const wb = data.workbook;
@@ -1957,8 +2923,6 @@
     if (wb && wb.file_id) {
       link.href = '/api/download/' + encodeURI(wb.file_id);
       link.classList.remove('disabled');
-      // v1.1: workbook always has 5 sheets. Display count from canonical
-      // value, not from the (possibly stale) backend sheet_count field.
       const displayCount = Math.max(wb.sheet_count || 0, CANONICAL_SHEET_COUNT);
       summary.textContent = `${displayCount} sheet${displayCount !== 1 ? 's' : ''} · consolidated reconciliation deliverable · generated ${formatTimestamp(wb.generated_at || '')}`;
     } else {
@@ -2026,6 +2990,11 @@
       const stmtSignals = signals[s.original_filename]
         || { name_variants: [], discrepancies: [], near_threshold: [] };
 
+      // v1.3: engine indicator pill (shows on card meta line if engine_used is present)
+      const engineIndicator = s.engine_used
+        ? `<span class="sep">·</span><span class="engine-tag">${escapeHtml(ENGINE_LABELS[s.engine_used] || s.engine_used)}</span>`
+        : '';
+
       // Failed card: simpler form
       if (isFailed) {
         return `
@@ -2041,6 +3010,7 @@
                   <span class="agent-tag" style="color: var(--err);">Agent ${agentNum}</span>
                   <span class="sep">·</span>Failed
                   ${s.failure_reason ? '<span class="sep">·</span>' + escapeHtml(s.failure_reason.replace(/_/g, ' ')) : ''}
+                  ${engineIndicator}
                 </div>
               </div>
               <span class="ps-status-pill failed">
@@ -2064,13 +3034,13 @@
                             && stmtSignals.name_variants.length === 0)
                            ? 'clean' : '';
 
-      // Expansion content
-      const flaggedVendors = stmtSignals.name_variants.length === 0
-                          && stmtSignals.discrepancies.length === 0
-                          && stmtSignals.near_threshold.length === 0
-                          && review === 0
-        ? null
-        : buildExpansionContent(s, stmtSignals);
+      const expansionContent = buildExpansionContent(s, stmtSignals);
+
+      // v1.4 Phase 5A: activityLine builder removed — the parsed/included/
+      // excluded counts already render as the headline tiles above the metric
+      // strip. The duplicate line was visual redundancy with no signal added.
+      // Kept the helper functions (hasPdfSkillData, computeParsedCounts) since
+      // they're still used by the headline tiles and Group A status detail.
 
       return `
         <div class="ps-card ${colorClass} ${expanded ? 'expanded' : ''}" id="ps-card-${origIdx}">
@@ -2084,6 +3054,7 @@
               <div class="ps-card-meta">
                 <span class="agent-tag">Agent ${agentNum}</span>
                 <span class="sep">·</span>${(s.status || 'success').toUpperCase()}
+                ${engineIndicator}
               </div>
             </div>
             <span class="ps-status-pill">
@@ -2109,19 +3080,23 @@
             </button>
           </div>
           <div class="ps-card-body">
+            <!-- v1.3 Phase 3b C1: bookkeeping-first headline (above legacy metrics
+                 for side-by-side comparison; legacy block removed in C1b). -->
+            ${renderHeadlineTiles(s)}
+            ${renderActivityClassification(s)}
             <div class="ps-metrics">
-              ${renderMetric('Transactions', s.transaction_count || 0)}
-              ${renderMetric('Vendors',      s.vendor_count || 0)}
-              ${renderMetric('Total Amount', '$' + Number(s.total_amount || 0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}))}
-              ${renderMetric('Review Needed', review, 'review' + (review === 0 ? ' zero' : ''))}
-              ${renderMetric('Confidence',   Math.round((s.extraction_confidence || 0) * 100) + '%')}
+              ${renderMetric('Included Payments', s.transaction_count || 0)}
+              ${renderMetric('Vendors',           s.vendor_count || 0)}
+              ${renderMetric('Total Amount',      '$' + Number(s.total_amount || 0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}))}
+              ${renderMetric('Review Needed',     review, 'review' + (review === 0 ? ' zero' : ''))}
+              ${renderMetric('Confidence',        Math.round((s.extraction_confidence || 0) * 100) + '%')}
             </div>
             <div class="ps-summary-strip ${summaryClass}">
               <span class="ps-summary-icon">${ICONS.info}</span>
               <span><span class="label">Review</span>${escapeHtml(reviewParts)}.</span>
             </div>
           </div>
-          ${flaggedVendors ? `<div class="ps-card-expansion">${flaggedVendors}</div>` : ''}
+          <div class="ps-card-expansion">${expansionContent}</div>
         </div>`;
     }).join('');
   }
@@ -2143,31 +3118,144 @@
       ? 'No vendors flagged for review'
       : `${review} flagged for review`);
     if (over > 0) parts.push(`${over} over $600`);
-    if (signals.name_variants.length > 0)
-      parts.push(`${signals.name_variants.length} name variant${signals.name_variants.length > 1 ? 's' : ''}`);
+    // v1.4 Phase 5A: removed `name variants` and `near threshold` from the
+    // per-statement review sentence — those are cross-statement findings that
+    // belong in Consolidated Validation, not on the statement-integrity card.
+    // `discrepancies` is kept because it signals a possible extraction issue
+    // in this specific statement (actionable at the per-statement level).
     if (signals.discrepancies.length > 0)
       parts.push(`${signals.discrepancies.length} discrepanc${signals.discrepancies.length > 1 ? 'ies' : 'y'}`);
-    if (signals.near_threshold.length > 0)
-      parts.push(`${signals.near_threshold.length} near threshold`);
     parts.push(`${conf}% confidence`);
     return parts.join(' · ');
   }
 
+  /* ─────────────────────────────────────────────────────────────────
+   * v1.2 — Phase 2A: Expanded card content reorganized into three
+   * conceptual groups (A/B/C).
+   *
+   * v1.3: Group A renders a transaction-type breakdown table when PDF
+   * Skill data is present (s.bookkeeping_breakdown). Falls back to
+   * existing italic future-state note otherwise.
+   *
+   * v1.3 Phase 2:
+   *   - Group A status detail uses real parsed/included/excluded
+   *     counts and a brief excluded-types phrase when PDF Skill data
+   *     is present. Falls back to generic message otherwise.
+   *   - Group A breakdown table title: "Statement Activity Breakdown"
+   *     (was "Excluded Transaction Breakdown" — misleading since the
+   *     table includes vendor_payment rows too).
+   *   - Group A helper note rewritten.
+   * ───────────────────────────────────────────────────────────────── */
   function buildExpansionContent(s, signals) {
     const parts = [];
 
-    // Review reason tags (aggregated from signals)
+    // ─── Group A — Statement-Level Bookkeeping Summary (always rendered) ───
+    const statusKey = (s.status || 'success').toLowerCase();
+    const hasBreakdown = hasPdfSkillData(s);
+    let statusClass, statusIcon, statusLabel, statusDetail;
+
+    if (statusKey === 'success') {
+      statusClass = 'status-success';
+      statusIcon  = ICONS.checkSimple;
+
+      // v1.3 Phase 2: when PDF Skill data is present, show real numbers
+      // ("39 rows identified. 31 included as vendor payments for 1099
+      // aggregation. 8 excluded (6 payroll deposits, 2 balance lines).").
+      // Without PDF Skill data, fall back to generic v1.2 message.
+      if (hasBreakdown) {
+        const counts = computeParsedCounts(s);
+        const exclPhrase = formatExcludedBreakdown(s.bookkeeping_breakdown);
+        statusLabel = 'Statement parsed successfully with PDF Skill';
+        if (counts.excluded === 0) {
+          // Clean PDF case — every parsed row was a vendor payment
+          statusDetail = `${counts.parsed} row${counts.parsed === 1 ? '' : 's'} identified. ` +
+                         `All ${counts.included} included as vendor payments for 1099 aggregation.`;
+        } else if (exclPhrase) {
+          statusDetail = `${counts.parsed} rows identified. ` +
+                         `${counts.included} included as vendor payments for 1099 aggregation. ` +
+                         `${counts.excluded} excluded (${exclPhrase}).`;
+        } else {
+          // Defensive — excluded count > 0 but no breakdown types resolved
+          statusDetail = `${counts.parsed} rows identified. ` +
+                         `${counts.included} included as vendor payments for 1099 aggregation. ` +
+                         `${counts.excluded} excluded.`;
+        }
+      } else {
+        statusLabel  = 'Statement parsed successfully';
+        statusDetail = 'No extraction issue was reported by the current pipeline.';
+      }
+    } else if (statusKey === 'partial') {
+      statusClass  = 'status-partial';
+      statusIcon   = ICONS.warnSimple;
+      statusLabel  = 'Statement parsed with partial coverage';
+      statusDetail = s.error_message
+        ? escapeHtml(s.error_message)
+        : 'Some processing steps did not complete fully. Vendor data was still extracted.';
+    } else {
+      statusClass  = 'status-failed';
+      statusIcon   = ICONS.warnSimple;
+      statusLabel  = 'Statement could not be parsed';
+      statusDetail = s.error_message
+        ? escapeHtml(s.error_message)
+        : 'Statement extraction failed.';
+    }
+
+    // v1.3 Phase 2: breakdown table title renamed to "Statement Activity
+    // Breakdown" — old name "Excluded Transaction Breakdown" was wrong
+    // because the table also includes Vendor payments (which are included).
+    // v1.4 Phase 5A: breakdownHtml table removed. The same per-type counts
+    // already render as the inline Activity Classification line in the
+    // always-visible card body, so the table inside Group A was duplicate
+    // information. The prose summary line above ("9 rows identified...")
+    // still tells the user what happened with this statement.
+
+    // v1.3 Phase 2: helper text rewritten. When PDF Skill data present,
+    // describes the classification approach; when absent, explains why
+    // the breakdown isn't shown for non-PDF-Skill engines.
+    const helperNote = hasBreakdown
+      ? `<p class="ps-group-helper">
+           Row-level classification by PDF Skill. Vendor payments are included
+           in 1099 aggregation. Other types (payroll, balance lines, transfers,
+           fees, etc.) are excluded but preserved in the per-statement Excel
+           audit trail.
+         </p>`
+      : `<p class="ps-group-helper">
+           Detailed bookkeeping breakdowns such as deposits, withdrawals, checks, fees,
+           transfers, excluded rows, and review-required rows are surfaced when the
+           PDF Skill engine is selected. Rule-based and multi-agent paths do not
+           produce row-level transaction-type classification.
+         </p>`;
+
+    parts.push(`
+      <div class="ps-group">
+        <h4 class="ps-group-title">Statement-Level Bookkeeping Summary</h4>
+        <div class="ps-group-status">
+          <div class="status-line ${statusClass}">
+            ${statusIcon}
+            <span>${escapeHtml(statusLabel)}</span>
+          </div>
+          <div class="status-detail">${statusDetail}</div>
+        </div>
+        ${helperNote}
+      </div>`);
+
+    // v1.4 Phase 4C — append the reconciliation waterfall after Group A
+    parts.push(renderReconciliation(s));
+
+    // v1.4 Phase 5A — append the Source B extraction completeness status
+    // immediately after the reconciliation waterfall, presenting Source A
+    // and Source B as a paired statement-integrity lens.
+    parts.push(renderExtractionCheck(s));
+
+    // ─── Group B — Bookkeeping Review Signals ───
     const tags = [];
     if (s.review_needed > 0) tags.push({ name: 'Review needed', count: s.review_needed });
     if (s.vendors_over_threshold > 0) tags.push({ name: 'Over $600', count: s.vendors_over_threshold });
-    if (signals.name_variants.length > 0) tags.push({ name: 'Name variant', count: signals.name_variants.length });
-    if (signals.discrepancies.length > 0) tags.push({ name: 'Discrepancy', count: signals.discrepancies.length });
-    if (signals.near_threshold.length > 0) tags.push({ name: 'Near threshold', count: signals.near_threshold.length });
 
     if (tags.length > 0) {
       parts.push(`
-        <div class="ps-section">
-          <div class="ps-section-title">Review Reason Tags</div>
+        <div class="ps-group">
+          <h4 class="ps-group-title">Bookkeeping Review Signals</h4>
           <div class="ps-tags">
             ${tags.map(t => `
               <span class="ps-tag">${escapeHtml(t.name)}<span class="tag-count">${t.count}</span></span>
@@ -2176,84 +3264,35 @@
         </div>`);
     }
 
-    // Near-threshold vendors specific to this statement
-    if (signals.near_threshold.length > 0) {
-      const rows = signals.near_threshold.map(nt => {
-        const dist = nt.distance_to_threshold;
-        const distLabel = dist < 0
-          ? `<span style="color:var(--ok)">+$${Math.abs(dist).toFixed(2)}</span>`
-          : `-$${Math.abs(dist).toFixed(2)}`;
-        return `
-          <tr>
-            <td><strong>${escapeHtml(nt.vendor)}</strong></td>
-            <td class="num">$${Number(nt.total_amount).toLocaleString('en-US',{minimumFractionDigits:2})}</td>
-            <td class="num">${distLabel}</td>
-          </tr>`;
-      }).join('');
+    // ─── Group C — Cross-Statement Signals Involving This Statement ───
+    //
+    // v1.4 Phase 5A: the full Near-Threshold / Discrepancies / Name Variant
+    // tables previously rendered here have moved out of the per-statement
+    // card. They live in Consolidated Validation, which is the architectural
+    // home for cross-statement findings (per the Per-Statement = bookkeeping /
+    // Consolidated = cross-validation split). This surface now shows a
+    // compact pointer so users still see that cross-statement signals exist
+    // for this file, without duplicating the tables.
+    const hasCrossSignals = signals.near_threshold.length > 0
+                         || signals.discrepancies.length > 0
+                         || signals.name_variants.length > 0;
+
+    if (hasCrossSignals) {
+      const findingCount = signals.near_threshold.length
+                         + signals.discrepancies.length
+                         + signals.name_variants.length;
+      const findingWord = findingCount === 1 ? 'finding' : 'findings';
       parts.push(`
-        <div class="ps-section">
-          <div class="ps-section-title">Near-Threshold Vendors</div>
-          <table class="ps-mini-table">
-            <thead><tr><th>Vendor</th><th class="num">Total</th><th class="num">Distance to $600</th></tr></thead>
-            <tbody>${rows}</tbody>
-          </table>
+        <div class="ps-group">
+          <h4 class="ps-group-title">Cross-Statement Signals Involving This Statement</h4>
+          <p class="ps-cross-pointer">
+            Cross-statement signals involving this statement: ${findingCount} ${findingWord} ·
+            View in Consolidated Validation.
+          </p>
         </div>`);
     }
 
-    // Possible extraction discrepancies for this statement
-    if (signals.discrepancies.length > 0) {
-      const rows = signals.discrepancies.map(d => {
-        // Show "this statement vs the other"
-        const isA = d.statement_a === s.original_filename;
-        const otherStmt = isA ? d.statement_b : d.statement_a;
-        const thisAmt   = isA ? d.amount_a : d.amount_b;
-        const otherAmt  = isA ? d.amount_b : d.amount_a;
-        return `
-          <tr>
-            <td><strong>${escapeHtml(d.vendor)}</strong></td>
-            <td class="num">$${Number(thisAmt).toLocaleString('en-US',{minimumFractionDigits:2})}</td>
-            <td>${escapeHtml(otherStmt)}</td>
-            <td class="num">$${Number(otherAmt).toLocaleString('en-US',{minimumFractionDigits:2})}</td>
-            <td class="num"><span style="color:var(--err);font-weight:600;">${d.ratio.toFixed(1)}x</span></td>
-          </tr>`;
-      }).join('');
-      parts.push(`
-        <div class="ps-section">
-          <div class="ps-section-title">Possible Extraction Discrepancies</div>
-          <table class="ps-mini-table">
-            <thead><tr><th>Vendor</th><th class="num">This Statement</th><th>Other Statement</th><th class="num">Other Amount</th><th class="num">Variance</th></tr></thead>
-            <tbody>${rows}</tbody>
-          </table>
-        </div>`);
-    }
-
-    // Name variants involving this statement
-    if (signals.name_variants.length > 0) {
-      const rows = signals.name_variants.map(nv => {
-        const isA = nv.statement_a === s.original_filename;
-        const thisName  = isA ? nv.name_a : nv.name_b;
-        const otherName = isA ? nv.name_b : nv.name_a;
-        const otherStmt = isA ? nv.statement_b : nv.statement_a;
-        return `
-          <tr>
-            <td><strong>${escapeHtml(thisName)}</strong></td>
-            <td><strong>${escapeHtml(otherName)}</strong></td>
-            <td>${escapeHtml(otherStmt)}</td>
-            <td class="num">${Math.round(nv.similarity * 100)}%</td>
-          </tr>`;
-      }).join('');
-      parts.push(`
-        <div class="ps-section">
-          <div class="ps-section-title">Name Variant Flags</div>
-          <table class="ps-mini-table">
-            <thead><tr><th>This Statement</th><th>Other Statement</th><th>In</th><th class="num">Similarity</th></tr></thead>
-            <tbody>${rows}</tbody>
-          </table>
-        </div>`);
-    }
-
-    return parts.length > 0 ? parts.join('') :
-      '<div class="ps-section"><p class="ps-empty">No additional findings for this statement.</p></div>';
+    return parts.join('');
   }
 
   window.toggleCard = function(idx) {
@@ -2289,6 +3328,25 @@
     if (!v) {
       content.innerHTML = '<p class="ps-empty">No validation findings.</p>';
       return;
+    }
+
+    // v1.4 Phase 5B: scope line — shows which statements this consolidated
+    // view is computed over. Reads validation.statements_processed (server-
+    // populated field with original filenames resolved). Hidden when the
+    // field is missing or empty so older payloads or rule_based runs that
+    // didn't populate it don't render an empty line.
+    let scopeHtml = '';
+    if (Array.isArray(v.statements_processed) && v.statements_processed.length > 0) {
+      const fileList = v.statements_processed.map(escapeHtml).join(' · ');
+      const n = v.statements_processed.length;
+      scopeHtml = `
+        <div style="margin: 0 0 1rem; padding: 0.7rem 0.95rem;
+                    background: var(--bg-section); border: 1px solid var(--border);
+                    border-radius: 6px; font-size: 0.82rem;
+                    color: var(--text-secondary);">
+          <strong style="color: var(--text-primary);">Statements analyzed (${n}):</strong>
+          ${fileList}
+        </div>`;
     }
 
     const sections = [
@@ -2396,7 +3454,7 @@
       },
     ];
 
-    content.innerHTML = sections.map((sec, idx) => {
+    content.innerHTML = scopeHtml + sections.map((sec, idx) => {
       const hasItems = sec.items.length > 0;
       const stateClass = hasItems ? 'has-review' : 'is-clean';
       return `
@@ -2434,9 +3492,6 @@
     const successStrip = document.getElementById('mwb-success-strip');
     const sheetList = document.getElementById('mwb-sheet-list');
 
-    // Sheet metadata is canonical to v1.1 master_excel_generator.py output.
-    // Always 5 sheets, in this order. The Executive Summary is sheet 0
-    // and is what opens by default when the workbook is launched.
     const sheets = [
       { name: 'Executive Summary',     desc: 'Key metrics, validation overview, top vendors, and run metadata' },
       { name: 'Master Vendor Summary', desc: 'Consolidated vendor totals and 1099 eligibility' },
@@ -2444,8 +3499,6 @@
       { name: 'All Transactions',      desc: 'Combined transaction-level detail with source statement' },
       { name: 'Per-Agent Summary',     desc: 'Per-statement processing metrics and cost' },
     ];
-    // Display count is driven by the canonical list — falls back to backend
-    // value only if for some reason the list is shorter than expected.
     const sheetCount = (workbook && workbook.sheet_count)
       ? Math.max(workbook.sheet_count, sheets.length)
       : sheets.length;
@@ -2479,8 +3532,9 @@
   function renderTechnical(tech) {
     const c = document.getElementById('technical-content');
     if (!tech) tech = {};
+    const engineLabel = ENGINE_LABELS[tech.engine] || tech.engine || '—';
     const rows = [
-      ['Engine',                tech.engine || '—'],
+      ['Engine',                engineLabel],
       ['Extraction Model',      tech.extraction_model || (tech.engine === 'rule_based' ? 'rule-based (no AI)' : '—')],
       ['Language',              tech.language || '—'],
       ['Processing Time (s)',   tech.processing_time_seconds != null ? tech.processing_time_seconds.toFixed(2) : '—'],

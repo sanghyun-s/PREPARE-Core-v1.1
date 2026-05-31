@@ -41,10 +41,117 @@ class Summary(BaseModel):
     successful_count: int
     failed_count: int
 
+    # v1.4 Phase 4E (web tile) — cross-statement reconciliation roll-up.
+    # Counts across SUCCESSFUL statements only (so failed statements don't
+    # muddy the denominator). A missing snapshot — rule_based / multi_agent
+    # engines, or PDF Skill that found no balance summary — folds into
+    # "unavailable". Defaults to zero for backward compatibility with any
+    # caller that doesn't set them.
+    reconciliation_balanced: int = 0
+    reconciliation_needs_review: int = 0
+    reconciliation_unavailable: int = 0
+
 
 # ---------------------------------------------------------------------------
 # Per-statement result (drives the Per-Statement compact cards)
 # ---------------------------------------------------------------------------
+
+class ReconciliationSnapshot(BaseModel):
+    """
+    v1.4 (Phase 4) — statement-level balance reconciliation.
+
+    The seven extracted fields are transcribed from the statement's account-
+    summary section by the PDF Skill engine (AS STATED — never computed by the
+    model). The three computed fields are derived server-side in
+    pipeline.run_pipeline_pdf_skill via the locked balance equation:
+
+        calculated_ending = beginning + deposits - withdrawals - checks
+                            - transfers - fees
+        difference        = calculated_ending - reported_ending
+        status            = "balanced" if |difference| <= 0.01
+                            else "needs_review"
+                            ("unavailable" when extraction incomplete)
+
+    Engines that don't extract balance figures (rule_based, multi_agent) omit
+    this object entirely (None on the Statement), which the frontend renders as
+    "reconciliation not available for this statement" — never a fabricated
+    balance.
+    """
+    # Extracted (AS STATED on the statement); None when not found
+    beginning_balance: Optional[float] = None
+    total_deposits: Optional[float] = None
+    total_withdrawals: Optional[float] = None
+    checks: Optional[float] = None
+    transfers: Optional[float] = None
+    fees: Optional[float] = None
+    reported_ending_balance: Optional[float] = None
+
+    # Computed server-side
+    calculated_ending_balance: Optional[float] = None
+    difference: Optional[float] = None
+    status: Literal["balanced", "needs_review", "unavailable"] = "unavailable"
+
+    # Provenance
+    extraction_complete: bool = False
+    fields_found: list[str] = Field(default_factory=list)
+    notes: Optional[str] = None
+
+
+class ExtractionCheck(BaseModel):
+    """
+    v1.4 (Phase 4 — Source B) — extraction-completeness cross-check.
+
+    Companion to ReconciliationSnapshot (Source A). Where Source A checks
+    whether the statement's stated math balances, Source B checks whether
+    every row the statement reported was actually extracted. Computed in
+    pipeline._compute_source_b by bucketing the extracted transactions and
+    comparing per-bucket row sums against the snapshot's stated activity
+    totals.
+
+    Bucketing (from the May 26 spike, verified GO across three real test PDFs):
+        deposits     ← deposit + interest + reimbursement
+        withdrawals  ← vendor_payment    (NOT checks, NOT fees)
+        checks       ← check_payment
+        transfers    ← transfer + owner_draw
+        fees         ← bank_fee
+
+    Status taxonomy:
+        complete    — every bucket's delta within RECONCILIATION_TOLERANCE
+                      (0.01). Strong signal extraction captured every row.
+        incomplete  — at least one bucket's delta exceeds tolerance. Likely
+                      missed or miscounted rows during extraction.
+        unavailable — no usable snapshot to compare against (rule_based /
+                      multi_agent engines, or PDF Skill found no balance
+                      summary). Source B can't run without stated totals.
+    """
+    status: Literal["complete", "incomplete", "unavailable"] = "unavailable"
+
+    # Per-bucket comparison: stated (from snapshot), row_sum (from extracted
+    # transactions), and delta (row_sum - stated, or row_sum alone when
+    # stated is None and row_sum > 0). delta is None for genuinely-absent
+    # sections where both stated is None AND row_sum is 0.
+    deposits_stated:     Optional[float] = None
+    deposits_row_sum:    Optional[float] = None
+    deposits_delta:      Optional[float] = None
+
+    withdrawals_stated:  Optional[float] = None
+    withdrawals_row_sum: Optional[float] = None
+    withdrawals_delta:   Optional[float] = None
+
+    checks_stated:       Optional[float] = None
+    checks_row_sum:      Optional[float] = None
+    checks_delta:        Optional[float] = None
+
+    transfers_stated:    Optional[float] = None
+    transfers_row_sum:   Optional[float] = None
+    transfers_delta:     Optional[float] = None
+
+    fees_stated:         Optional[float] = None
+    fees_row_sum:        Optional[float] = None
+    fees_delta:          Optional[float] = None
+
+    notes: Optional[str] = None
+
 
 class Statement(BaseModel):
     file_id: str
@@ -62,6 +169,23 @@ class Statement(BaseModel):
 
     excel_file_id: Optional[str] = None  # for per-statement download
 
+    # v1.3 — PDF Skill engine fields. Optional so older engines (rule_based,
+    # multi_agent) that don't produce them still validate. Frontend reads
+    # bookkeeping_breakdown to render the transaction-type table in
+    # Per-Statement card Group A.
+    engine_used: Optional[str] = None
+    bookkeeping_breakdown: Optional[dict] = None
+    excluded_count: int = 0
+
+    # v1.4 (Phase 4) — statement reconciliation snapshot. None for engines
+    # that don't extract balance figures (rule_based, multi_agent).
+    reconciliation_snapshot: Optional[ReconciliationSnapshot] = None
+
+    # v1.4 (Phase 4 — Source B) — extraction-completeness check. Independent
+    # of Source A: tells whether the extracted rows sum to the snapshot's
+    # stated activity totals. None for engines that don't produce one
+    # (rule_based, multi_agent).
+    extraction_check: Optional[ExtractionCheck] = None
 
 # ---------------------------------------------------------------------------
 # Consolidated Validation findings (drives the four collapsible sections)
@@ -139,7 +263,7 @@ class WorkbookInfo(BaseModel):
 # ---------------------------------------------------------------------------
 
 class Technical(BaseModel):
-    engine: Literal["rule_based", "ai_assisted", "multi_agent"]
+    engine: Literal['rule_based', 'ai_assisted', 'multi_agent', 'pdf_skill']
     extraction_model: Optional[str] = None      # None for rule_based
     language: str = "English"                    # carried for v1.1 translation
     processing_time_seconds: Optional[float] = None

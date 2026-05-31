@@ -1,9 +1,17 @@
 """
-Validation Engine
------------------
+Validation Engine — v1.2 (Phase 3a, B1)
+----------------------------------------
 Deterministic, rule-based cross-statement validation. Does not rely on
 the LLM for accuracy-critical checks — produces concrete data structures
 that the master Excel generator and the validation report consumer can use.
+
+v1.2 (Phase 3a) changes:
+    * B1: Symmetric name variant entries are now deduplicated before being
+      returned. The pair-comparison loop produces both (A, B) and (B, A)
+      directions when the same two names appear in opposite statements;
+      `_dedup_name_variants()` collapses these to one canonical entry per
+      unique name-pair (alphabetically-ordered). ReviewFlags propagation
+      is unaffected — dedup is consumer-facing only.
 
 The engine produces a DeterministicValidation record containing:
 
@@ -112,6 +120,51 @@ def _similarity(a: str, b: str) -> float:
     """Fuzzy similarity ratio between two vendor name strings."""
     return SequenceMatcher(None, a.upper(), b.upper()).ratio()
 
+def _dedup_name_variants(variants: list[NameVariant]) -> list[NameVariant]:
+    """
+    Deduplicate symmetric name variant entries.
+
+    The pair-comparison loop in `run_deterministic_validation` produces both
+    (A, B) and (B, A) when the same two vendor names appear in opposite
+    statements. This collapses them into one canonical entry per unique
+    name-pair, keeping the entry where name_a sorts alphabetically before
+    name_b (case-insensitive). Predictable, deterministic ordering makes
+    the Master Excel Name Variant Flags section diff-able across runs.
+
+    Note: dedup operates on the consumer-facing list only. The flag
+    propagation in `mark_name_variant()` still fires on every cross-direction
+    comparison so that both statements' ReviewFlags correctly record the
+    cross-statement signal — only the visible findings list is collapsed.
+
+    v1.2 (Phase 3a, B1): Introduced to fix Master Vendor Summary Name
+    Variant Flags section and Consolidated Validation count showing
+    inflated numbers (e.g., 3 underlying pairs reported as 5 entries on
+    the 2-PDF test corpus where the same name-pair appeared in both
+    cross-directions).
+    """
+    seen: set[tuple[str, str]] = set()
+    deduped: list[NameVariant] = []
+    for nv in variants:
+        # Canonical key: alphabetically-ordered name pair (case-insensitive)
+        pair = tuple(sorted([nv.name_a.upper(), nv.name_b.upper()]))
+        if pair in seen:
+            continue
+        seen.add(pair)
+        # Normalize entry so name_a is alphabetically first.
+        # This makes Excel output stable and easier to compare across runs.
+        if nv.name_a.upper() > nv.name_b.upper():
+            nv = NameVariant(
+                statements_involved=nv.statements_involved,
+                name_a=nv.name_b,
+                name_b=nv.name_a,
+                similarity=nv.similarity,
+                amount_a=nv.amount_b,
+                amount_b=nv.amount_a,
+                statement_a=nv.statement_b,
+                statement_b=nv.statement_a,
+            )
+        deduped.append(nv)
+    return deduped
 
 # ---------------------------------------------------------------------------
 # Main entry point
@@ -298,6 +351,15 @@ def run_deterministic_validation(
                     statement=out["statement_label"],
                     distance_to_threshold=THRESHOLD_AMOUNT - amt,
                 ))
+
+    # B1: Dedupe symmetric name variant entries before returning.
+    # When the same two vendor names appear in opposite statements
+    # (e.g., "Mary Johnson Consulting" in A vs "John Smith Consulting" in B,
+    # AND "John Smith Consulting" in A vs "Mary Johnson Consulting" in B),
+    # the pair-comparison loop above flags both directions. Collapse to one.
+    # ReviewFlags propagation already happened in-loop; this is consumer-
+    # facing cleanup only.
+    result.name_variants = _dedup_name_variants(result.name_variants)
 
     return result
 

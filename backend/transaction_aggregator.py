@@ -11,6 +11,22 @@ Why this matters for 1099 prep:
 
     Without aggregation, you miss 1099 obligations.
     That's the real pain point this solves.
+
+v1.2 — Transaction Classifier integration
+-----------------------------------------
+The Transaction dataclass now carries three classifier-set fields:
+    transaction_type   — vendor_payment / payroll / balance / etc.
+    include_for_1099   — bool; aggregator filters on this
+    review_required    — bool; surfaced for human-review flagging
+
+Aggregation now skips rows where include_for_1099 is False, in addition
+to the pre-existing norm.excluded check. This catches payroll deposits,
+opening/ending balance lines, transfers, fees, and unidentified checks
+that pdfplumber/regex extracts but should not contribute to vendor totals.
+
+The classifier itself lives in backend/transaction_classifier.py and is
+invoked by pipeline.py (rule-based engine) and agent_tools.py (AI engines)
+between extraction and normalization.
 """
 
 from dataclasses import dataclass, field
@@ -32,6 +48,15 @@ class Transaction:
     description: str            # Raw vendor string from statement
     amount: float               # Positive for payments out
     source: str = "bank"        # "bank" or "credit_card"
+
+    # ── v1.2: classifier-populated fields ──
+    # Set by backend/transaction_classifier.py.classify_transactions().
+    # Defaults preserve backward compatibility: any code path that builds
+    # Transactions without invoking the classifier still aggregates correctly.
+    transaction_type: str = "vendor_payment"
+    include_for_1099: bool = True
+    review_required: bool = False
+    exclusion_reason: str = ""
 
 
 @dataclass
@@ -68,6 +93,14 @@ def aggregate_by_vendor(
     Returns:
         List of VendorSummary objects, one per unique canonical vendor,
         sorted by total_amount descending.
+
+    v1.2: A row is skipped from aggregation if EITHER:
+        - norm.excluded is True (vendor normalizer rejected the row), OR
+        - txn.include_for_1099 is False (classifier excluded the row, e.g.
+          payroll deposit, balance line, transfer, unidentified check)
+
+    Both gates are applied to preserve existing normalizer behavior while
+    adding classifier-level exclusions on top. Defense in depth.
     """
     if len(transactions) != len(normalized_vendors):
         raise ValueError(
@@ -75,11 +108,18 @@ def aggregate_by_vendor(
             f"({len(normalized_vendors)}) must have the same length"
         )
 
-    # Group by canonical name — skip excluded entries (deposits, payroll, transfers)
+    # Group by canonical name — skip excluded entries (deposits, payroll,
+    # transfers, balance lines, unidentified checks, normalizer-rejected rows)
     groups: dict[str, list[tuple[Transaction, NormalizedVendor]]] = defaultdict(list)
     excluded_count = 0
     for txn, norm in zip(transactions, normalized_vendors):
+        # Pre-existing normalizer-level exclusion
         if norm.excluded:
+            excluded_count += 1
+            continue
+        # v1.2: classifier-level exclusion. getattr() preserves backward
+        # compat for any old Transaction objects predating the field.
+        if not getattr(txn, "include_for_1099", True):
             excluded_count += 1
             continue
         groups[norm.canonical_name].append((txn, norm))
@@ -100,6 +140,13 @@ def aggregate_by_vendor(
         min_confidence = min(n.match_confidence for n in norms)
         any_needs_review = any(n.needs_review for n in norms)
 
+        # v1.2: also flag the vendor if any constituent transaction was
+        # marked review_required by the classifier (e.g. a "check" with
+        # visible payee that still needs payee verification).
+        any_classifier_review = any(
+            getattr(t, "review_required", False) for t in txns
+        )
+
         # Entity type: use the first non-None entity type found
         entity_type = next((n.entity_type for n in norms if n.entity_type), None)
 
@@ -109,6 +156,11 @@ def aggregate_by_vendor(
         if len(raw_variants) > 1 and min_confidence < 0.9:
             review_reasons.append(
                 f"Multiple raw name variants grouped together ({len(raw_variants)})"
+            )
+        if any_classifier_review:
+            review_reasons.append(
+                "Contains transactions flagged for review by classifier "
+                "(e.g. check payment with payee that should be verified)"
             )
 
         summaries.append(VendorSummary(
@@ -120,7 +172,7 @@ def aggregate_by_vendor(
             last_payment_date=dates[-1] if dates else None,
             raw_name_variants=raw_variants,
             match_confidence=round(min_confidence, 2),
-            needs_review=any_needs_review,
+            needs_review=any_needs_review or any_classifier_review,
             review_reasons=review_reasons,
         ))
 

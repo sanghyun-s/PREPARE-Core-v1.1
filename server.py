@@ -22,6 +22,13 @@ v1.0 changes from v0.6:
     * `language` parameter retained as a no-op pass-through (carried for
       v1.1 workbook localization).
 
+v1.3 changes:
+    * New "pdf_skill" engine routed through pdf_skill_adapter.py via
+      pipeline.run_pipeline_pdf_skill(). Existing engines (rule_based,
+      ai_assisted, multi_agent) unchanged.
+    * PDF Skill failures don't crash the run — they surface as per-statement
+      "failed" entries with structured failure_reason.
+
 Endpoints:
   POST /api/process              — Main workflow. Returns ProcessResponse.
   GET  /api/download/{file_id}   — Download a generated Excel file.
@@ -60,6 +67,8 @@ from schemas import (
     ProcessResponse,
     Summary,
     Statement,
+    ReconciliationSnapshot,
+    ExtractionCheck,
     Validation,
     CrossMatch,
     CrossMatchAppearance,
@@ -95,7 +104,7 @@ OUTPUTS_DIR.mkdir(exist_ok=True)
 
 FRONTEND = ROOT / "frontend"
 
-VERSION = "1.0.0"
+VERSION = "1.3.0"
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -143,6 +152,39 @@ def _save_upload(file: UploadFile, suffix: str) -> Optional[UploadInfo]:
         original_filename=file.filename or saved_path.name,
         file_id=file_id,
     )
+
+
+# ---------------------------------------------------------------------------
+# v1.3: PDF Skill result → vendors list helper
+# ---------------------------------------------------------------------------
+
+def _vendors_from_pipeline_result(stmt_result: dict) -> list[dict]:
+    """
+    Convert the aggregated vendor summaries from run_pipeline_pdf_skill
+    into the dict shape that downstream code (validation, response builder)
+    expects.
+
+    pipeline.run_pipeline_pdf_skill returns a 'vendor_summaries' list of
+    VendorSummary objects in stmt_result. Each gets serialized to a dict
+    matching the existing agent_outputs vendor schema.
+    """
+    summaries = stmt_result.get("vendor_summaries", [])
+    if not summaries:
+        return []
+
+    return [
+        {
+            "canonical_name": s.canonical_name,
+            "entity_type": s.entity_type,
+            "total_amount": s.total_amount,
+            "transaction_count": s.transaction_count,
+            "match_confidence": s.match_confidence,
+            "needs_review": s.needs_review,
+            "review_reasons": list(s.review_reasons) if s.review_reasons else [],
+            "raw_name_variants": list(s.raw_name_variants) if s.raw_name_variants else [],
+        }
+        for s in summaries
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -237,7 +279,7 @@ async def process(
     """
     Unified workflow endpoint.
 
-    engine:           "rule_based" | "ai_assisted" | "multi_agent"
+    engine:           "rule_based" | "ai_assisted" | "multi_agent" | "pdf_skill"
     extraction_model: Default Haiku. Advanced override available.
     language:         Reserved for v1.1 workbook localization. No-op in v1.0.
     """
@@ -247,7 +289,7 @@ async def process(
     if len(pdf_files) > 10:
         raise HTTPException(status_code=422, detail="Maximum 10 PDFs per run.")
 
-    if engine not in ("rule_based", "ai_assisted", "multi_agent"):
+    if engine not in ("rule_based", "ai_assisted", "multi_agent", "pdf_skill"):
         raise HTTPException(status_code=422, detail=f"Unknown engine: {engine}")
 
     if engine != "rule_based" and not os.getenv("ANTHROPIC_API_KEY"):
@@ -275,23 +317,133 @@ async def process(
     resolve = _make_resolver(filename_map)
 
     # ── Run the chosen engine ──
-    try:
-        engine_result = await run_engine(
-            engine=engine,
-            pdf_paths=pdf_paths,
-            output_dir=str(run_dir),
-            vendor_list_path=csv_path,
-            extraction_model=extraction_model,
-            language=language,
-        )
-    except Exception as e:
-        # Engine startup failure — top-level error, return minimal response
-        raise HTTPException(status_code=500, detail=f"Engine failed: {e}")
+    # v1.3: PDF Skill engine bypasses run_engine() and uses pdf_skill_adapter
+    # directly. It produces the same agent_outputs shape so downstream code
+    # (validation, workbook, response building) stays identical.
+    if engine == "pdf_skill":
+        from pipeline import run_pipeline_pdf_skill
 
-    if not engine_result.get("success"):
-        raise HTTPException(status_code=500, detail=engine_result.get("error", "Engine failed"))
+        agent_outputs = []
+        total_cost_usd = 0.0
+        any_success = False
 
-    agent_outputs = engine_result.get("agent_outputs", [])
+        # Resolve model — only Sonnet and Opus are supported by pdf_skill_adapter
+        pdf_skill_model = extraction_model if extraction_model in (
+            "claude-sonnet-4-6", "claude-opus-4-7"
+        ) else "claude-sonnet-4-6"
+
+        for u in upload_infos:
+            per_stmt_xlsx = run_dir / f"{u.file_id}_pdf_skill.xlsx"
+
+            stmt_result = run_pipeline_pdf_skill(
+                pdf_path=str(u.saved_path),
+                output_path=str(per_stmt_xlsx),
+                vendor_list_path=csv_path,
+                source="bank",
+                model=pdf_skill_model,
+                verbose=True,
+            )
+
+            internal_label = f"{u.file_id}.pdf"
+
+            if stmt_result.get("success"):
+                any_success = True
+                total_cost_usd += stmt_result.get("cost_usd", 0.0)
+                agent_outputs.append({
+                    "statement_label": internal_label,
+                    "status": "success",
+                    "error_message": None,
+                    "vendors": _vendors_from_pipeline_result(stmt_result),
+                    # v1.3 master-fix: pass real transactions through so master
+                    # generator's All Transactions sheet and Executive Summary
+                    # count have data to read. Falls back to empty list for
+                    # safety if pipeline didn't expose them.
+                    "transactions": stmt_result.get("transactions") or [],
+                    "extraction_confidence": stmt_result.get("confidence", 0.0),
+                    "tool_calls": 1,
+                    # v1.3 master-fix: surface per-statement cost so master's
+                    # Per-Agent Summary "Cost ($)" column renders the real number.
+                    "cost_usd": stmt_result.get("cost_usd", 0.0),
+                    "output_path": str(per_stmt_xlsx) if per_stmt_xlsx.exists() else None,
+                    # v1.3 extras (surfaced in response for per-statement card)
+                    "engine_used": "pdf_skill",
+                    "pdf_skill_breakdown": stmt_result.get("pdf_skill_breakdown", {}),
+                    "transactions_excluded": stmt_result.get("transactions_excluded", 0),
+                    "pdf_skill_metadata": stmt_result.get("pdf_skill_metadata", {}),
+                    # v1.4 Phase 4 — carry the computed reconciliation snapshot
+                    # downstream. pipeline.run_pipeline_pdf_skill computes this
+                    # via _compute_reconciliation() and puts it on its return
+                    # dict; without this line it gets dropped here, leaving the
+                    # per-statement card's waterfall and the Workspace 4E roll-up
+                    # with no data (visible as "Unavailable" for every statement).
+                    "reconciliation_snapshot": stmt_result.get("reconciliation_snapshot"),
+                    # v1.4 Phase 4 — Source B: carry the extraction-completeness
+                    # check downstream. Computed in pipeline._compute_source_b
+                    # alongside _compute_reconciliation; same carry-or-drop
+                    # pattern as the snapshot above. Without this line, the
+                    # master 4E roll-up's "X of N show complete extraction"
+                    # summary line wouldn't render and Statement.extraction_check
+                    # would always be None.
+                    "extraction_check": stmt_result.get("extraction_check"),
+                })
+            else:
+                # PDF Skill failure — translate adapter failure_reason to
+                # schema's raw status names so _map_status() handles it.
+                failure_reason = stmt_result.get("failure_reason", "other")
+                err_msg = stmt_result.get("error_details") or stmt_result.get(
+                    "error", "PDF Skill extraction failed"
+                )
+                raw_status_map = {
+                    "invalid_pdf":             "failed_extraction",
+                    "agent_subprocess_failed": "failed_other",
+                    "agent_timeout":           "failed_other",
+                    "agent_returned_unknown":  "failed_extraction",
+                    "schema_violation":        "failed_extraction",
+                    "sdk_not_installed":       "failed_other",
+                    "no_api_key":              "failed_other",
+                }
+                raw_status = raw_status_map.get(failure_reason, "failed_other")
+                agent_outputs.append({
+                    "statement_label": internal_label,
+                    "status": raw_status,
+                    "error_message": err_msg,
+                    "vendors": [],
+                    "transactions": [],
+                    "extraction_confidence": 0.0,
+                    "tool_calls": 0,
+                    "cost_usd": 0.0,
+                    "output_path": None,
+                    "engine_used": "pdf_skill",
+                    "pdf_skill_breakdown": {},
+                    "transactions_excluded": 0,
+                    "pdf_skill_metadata": {},
+                })
+
+        engine_result = {
+            "success": True,  # Always continue downstream; per-statement failures are surfaced individually
+            "agent_outputs": agent_outputs,
+            "total_cost_usd": total_cost_usd,
+        }
+
+    else:
+        # Existing engines (rule_based / ai_assisted / multi_agent)
+        try:
+            engine_result = await run_engine(
+                engine=engine,
+                pdf_paths=pdf_paths,
+                output_dir=str(run_dir),
+                vendor_list_path=csv_path,
+                extraction_model=extraction_model,
+                language=language,
+            )
+        except Exception as e:
+            # Engine startup failure — top-level error, return minimal response
+            raise HTTPException(status_code=500, detail=f"Engine failed: {e}")
+
+        if not engine_result.get("success"):
+            raise HTTPException(status_code=500, detail=engine_result.get("error", "Engine failed"))
+
+        agent_outputs = engine_result.get("agent_outputs", [])
 
     # ── Build per-statement review flags + 1099 eligibility ──
     flags_by_statement: dict[str, dict] = {}
@@ -380,7 +532,7 @@ async def process(
             message=f"Master workbook generation failed: {e}",
             fatal=False,
         ))
-        
+
     # ── Build per-agent file IDs for individual downloads ──
     for out in agent_outputs:
         if out.get("output_path"):
@@ -404,6 +556,16 @@ async def process(
     total_over_threshold = 0
     total_review_needed = 0
 
+    # v1.4 Phase 4E (web tile) — cross-statement reconciliation roll-up.
+    # Tally per-statement reconciliation status across SUCCESSFUL statements so
+    # the Workspace can show "X of N reconcile" + balanced/needs_review/unavailable
+    # breakdown alongside the other KPIs. A missing snapshot (rule_based /
+    # multi_agent / no balance summary) folds into "unavailable" — same rule
+    # as the master workbook 4E block.
+    recon_balanced = 0
+    recon_needs_review = 0
+    recon_unavailable = 0
+
     for out in agent_outputs:
         raw_status = out.get("status", "failed_other")
         schema_status, failure_reason = _map_status(raw_status)
@@ -415,7 +577,15 @@ async def process(
             failed_count += 1
 
         vendors = out.get("vendors", []) if is_ok else []
-        txn_count = len(out.get("transactions", [])) if is_ok else 0
+        all_txns = out.get("transactions", []) if is_ok else []
+
+        # v1.3: for pdf_skill engine, transaction_count comes from vendor summaries
+        # since `transactions` list isn't surfaced to keep response payload small.
+        if out.get("engine_used") == "pdf_skill" and is_ok:
+            txn_count = sum(v.get("transaction_count", 0) for v in vendors)
+        else:
+            txn_count = sum(1 for t in all_txns if t.get("include_for_1099", True))
+
         amt = round(sum(v.get("total_amount", 0) for v in vendors), 2)
         over_thresh = sum(1 for v in vendors if v.get("total_amount", 0) >= 600)
         review_count = sum(
@@ -433,6 +603,37 @@ async def process(
         internal_label = out["statement_label"]
         file_id_stem = internal_label[:-4] if internal_label.endswith(".pdf") else internal_label
 
+        # v1.4 (Phase 4): build the reconciliation snapshot model from the dict
+        # the pipeline computed. None when the engine produced no snapshot
+        # (rule_based / multi_agent) or the statement failed.
+        recon_dict = out.get("reconciliation_snapshot")
+        recon_model = (
+            ReconciliationSnapshot(**recon_dict)
+            if isinstance(recon_dict, dict) and recon_dict
+            else None
+        )
+
+        # v1.4 (Phase 4 — Source B): build the extraction-completeness model
+        # from the dict the pipeline computed. None when the engine produced
+        # no check (rule_based / multi_agent) or the statement failed. Same
+        # carry-or-drop pattern as recon_model above.
+        ec_dict = out.get("extraction_check")
+        ec_model = (
+            ExtractionCheck(**ec_dict)
+            if isinstance(ec_dict, dict) and ec_dict
+            else None
+        )
+
+        # v1.4 Phase 4E (web tile) — tally for the roll-up, successful only.
+        if is_ok:
+            status = recon_dict.get("status") if isinstance(recon_dict, dict) else None
+            if status == "balanced":
+                recon_balanced += 1
+            elif status == "needs_review":
+                recon_needs_review += 1
+            else:
+                recon_unavailable += 1
+
         statements.append(Statement(
             file_id=file_id_stem,
             original_filename=resolve(internal_label),
@@ -446,9 +647,18 @@ async def process(
             review_needed=review_count,
             extraction_confidence=out.get("extraction_confidence", 0.0),
             excel_file_id=out.get("_excel_file_id"),
+            # v1.3: pass through PDF Skill fields if present (None for other engines)
+            engine_used=out.get("engine_used"),
+            bookkeeping_breakdown=out.get("pdf_skill_breakdown") or None,
+            excluded_count=out.get("transactions_excluded", 0),
+            # v1.4 (Phase 4): reconciliation snapshot (None for non-PDF-Skill engines)
+            reconciliation_snapshot=recon_model,
+            # v1.4 (Phase 4 — Source B): extraction-completeness check
+            # (None for non-PDF-Skill engines or when no snapshot was available
+            # to compare against).
+            extraction_check=ec_model,
         ))
 
-    # Summary
     # Summary — unique_vendors is the deduplicated count of canonical names
     # across all successful statements (matches Executive Summary workbook sheet).
     # Without dedup, vendors appearing in multiple statements get double-counted.
@@ -466,6 +676,10 @@ async def process(
         review_needed_count=total_review_needed,
         successful_count=successful_count,
         failed_count=failed_count,
+        # v1.4 Phase 4E (web tile) — cross-statement reconciliation roll-up
+        reconciliation_balanced=recon_balanced,
+        reconciliation_needs_review=recon_needs_review,
+        reconciliation_unavailable=recon_unavailable,
     )
 
     # Validation — resolve all statement labels to original filenames

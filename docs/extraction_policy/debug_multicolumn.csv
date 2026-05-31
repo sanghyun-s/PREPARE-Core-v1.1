@@ -1,0 +1,40 @@
+row_index,page,raw_date,raw_description,raw_withdrawal,raw_deposit,raw_balance,parsed_date,parsed_description,parsed_amount,transaction_type,include_for_1099,exclusion_reason,notes
+1,1,01/02/24,OPENING BALANCE,,,"8,500.00",2024-01-02,OPENING BALANCE,,balance,no,Statement metadata — opening balance is not a transaction,OPENING BALANCE row
+2,1,01/03/24,ADOBE SYSTEMS INC,599.88,,"7,900.12",2024-01-03,ADOBE SYSTEMS INC,599.88,vendor_payment,yes,,Withdrawal column has the amount
+3,1,01/05/24,COMCAST BUSINESS,249.99,,"7,650.13",2024-01-05,COMCAST BUSINESS,249.99,vendor_payment,yes,,
+4,1,01/08/24,PAYROLL DIRECT DEPOSIT,,"6,500.00","14,150.13",2024-01-08,PAYROLL DIRECT DEPOSIT,6500.0,payroll,no,"Income deposit — money INTO account, not a vendor payment OUT","Critical exclude — would inflate total by $39,000 across 6 occurrences if included"
+5,1,01/12/24,MARY JOHNSON CONSULTING,850.00,,"13,300.13",2024-01-12,MARY JOHNSON CONSULTING,850.0,vendor_payment,yes,,Contractor payment
+6,1,01/18/24,ATT UVERSE AUTOPAY,189.99,,"13,110.14",2024-01-18,ATT UVERSE AUTOPAY,189.99,vendor_payment,yes,,Utility — AT&T variant
+7,1,01/22/24,STAPLES INC #0421,142.55,,"12,967.59",2024-01-22,STAPLES INC #0421,142.55,vendor_payment,yes,,Same store number as PDF1 row 5; same vendor
+8,1,01/28/24,AMZN MKTP US*4H2LK9,87.43,,"12,880.16",2024-01-28,AMZN MKTP US*4H2LK9,87.43,vendor_payment,yes,,Mixed merchant — Amazon retail (NOT AWS); flag for category review
+9,1,02/02/24,ADOBE SYSTEMS INC,599.88,,"12,280.28",2024-02-02,ADOBE SYSTEMS INC,599.88,vendor_payment,yes,,
+10,1,02/05/24,COMCAST BUSINESS,249.99,,"12,030.29",2024-02-05,COMCAST BUSINESS,249.99,vendor_payment,yes,,
+11,1,02/08/24,PAYROLL DIRECT DEPOSIT,,"6,500.00","18,530.29",2024-02-08,PAYROLL DIRECT DEPOSIT,6500.0,payroll,no,Income deposit,
+12,1,02/14/24,JOHN SMITH CONSULTING,800.00,,"17,730.29",2024-02-14,JOHN SMITH CONSULTING,800.0,vendor_payment,yes,,Contractor — note 'Consulting' suffix
+13,1,02/18/24,ROBERT KIM LLC,600.00,,"17,130.29",2024-02-18,ROBERT KIM LLC,600.0,vendor_payment,yes,,At $600 threshold exactly
+14,1,02/22/24,PG&E ELECTRIC AUTOPAY,312.44,,"16,817.85",2024-02-22,PG&E ELECTRIC AUTOPAY,312.44,vendor_payment,yes,,Utility (corp — likely 1099-EXEMPT)
+15,1,03/02/24,ADOBE SYSTEMS INC,599.88,,"16,217.97",2024-03-02,ADOBE SYSTEMS INC,599.88,vendor_payment,yes,,
+16,1,03/05/24,COMCAST BUSINESS,249.99,,"15,967.98",2024-03-05,COMCAST BUSINESS,249.99,vendor_payment,yes,,
+17,1,03/08/24,PAYROLL DIRECT DEPOSIT,,"6,500.00","22,467.98",2024-03-08,PAYROLL DIRECT DEPOSIT,6500.0,payroll,no,Income deposit,
+18,1,03/15/24,MARY JOHNSON CONSULTING LLC,650.00,,"21,817.98",2024-03-15,MARY JOHNSON CONSULTING LLC,650.0,vendor_payment,yes,,Variant — 'LLC' suffix vs row 5
+19,1,03/20/24,DAVID LEE CONTRACTOR,750.00,,"21,067.98",2024-03-20,DAVID LEE CONTRACTOR,750.0,vendor_payment,yes,,Contractor — 1099-NEC candidate
+20,1,03/25/24,HOME DEPOT 4411,189.22,,"20,878.76",2024-03-25,HOME DEPOT 4411,189.22,vendor_payment,yes,,"Store number differs from PDF1 (#6547, #8832); same canonical vendor 'Home Depot'"
+21,1,04/02/24,ADOBE SYSTEMS INC,599.88,,"20,278.88",2024-04-02,ADOBE SYSTEMS INC,599.88,vendor_payment,yes,,
+22,1,04/05/24,COMCAST BUSINESS,249.99,,"20,028.89",2024-04-05,COMCAST BUSINESS,249.99,vendor_payment,yes,,
+23,1,04/08/24,PAYROLL DIRECT DEPOSIT,,"6,500.00","26,528.89",2024-04-08,PAYROLL DIRECT DEPOSIT,6500.0,payroll,no,Income deposit,
+24,1,04/12/24,J SMITH LLC,450.00,,"26,078.89",2024-04-12,J SMITH LLC,450.0,vendor_payment,yes,,AMBIGUOUS — name variant of 'JOHN SMITH LLC'? Different person? Flag for review
+25,1,04/18/24,STAPLES.COM,94.15,,"25,984.74",2024-04-18,STAPLES.COM,94.15,vendor_payment,yes,,Variant of 'STAPLES INC #0421' — same canonical 'Staples'
+26,1,04/25/24,DAVID LEE CONTRACTOR,850.00,,"25,134.74",2024-04-25,DAVID LEE CONTRACTOR,850.0,vendor_payment,yes,,
+27,1,05/02/24,ADOBE SYSTEMS INC,599.88,,"24,534.86",2024-05-02,ADOBE SYSTEMS INC,599.88,vendor_payment,yes,,
+28,1,05/05/24,COMCAST BUSINESS,249.99,,"24,284.87",2024-05-05,COMCAST BUSINESS,249.99,vendor_payment,yes,,
+29,1,05/08/24,PAYROLL DIRECT DEPOSIT,,"6,500.00","30,784.87",2024-05-08,PAYROLL DIRECT DEPOSIT,6500.0,payroll,no,Income deposit,
+30,1,05/15/24,PG&E ELECTRIC AUTOPAY,289.33,,"30,495.54",2024-05-15,PG&E ELECTRIC AUTOPAY,289.33,vendor_payment,yes,,
+31,2,05/22/24,FED EX SHIP CTR 7734,145.00,,"30,350.54",2024-05-22,FED EX SHIP CTR 7734,145.0,vendor_payment,yes,,FedEx variant — 'SHIP CTR' instead of 'Office'
+32,2,05/28/24,ROBERT KIM LLC,450.00,,"29,900.54",2024-05-28,ROBERT KIM LLC,450.0,vendor_payment,yes,,
+33,2,06/02/24,ADOBE SYSTEMS INC,599.88,,"29,300.66",2024-06-02,ADOBE SYSTEMS INC,599.88,vendor_payment,yes,,
+34,2,06/05/24,COMCAST BUSINESS,249.99,,"29,050.67",2024-06-05,COMCAST BUSINESS,249.99,vendor_payment,yes,,
+35,2,06/08/24,PAYROLL DIRECT DEPOSIT,,"6,500.00","35,550.67",2024-06-08,PAYROLL DIRECT DEPOSIT,6500.0,payroll,no,Income deposit,
+36,2,06/15/24,DAVID LEE CONTRACTOR,850.00,,"34,700.67",2024-06-15,DAVID LEE CONTRACTOR,850.0,vendor_payment,yes,,
+37,2,06/22/24,JOHN SMITH LLC,700.00,,"34,000.67",2024-06-22,JOHN SMITH LLC,700.0,vendor_payment,yes,,Variant of 'JOHN SMITH CONSULTING' / 'J SMITH LLC' — accountant judgment needed
+38,2,06/28/24,VERIZON WIRELESS,189.00,,"33,811.67",2024-06-28,VERIZON WIRELESS,189.0,vendor_payment,yes,,
+39,2,06/30/24,ENDING BALANCE,,,"33,811.67",2024-06-30,ENDING BALANCE,,balance,no,Statement metadata — ending balance is not a transaction,ENDING BALANCE row

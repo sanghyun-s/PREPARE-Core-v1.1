@@ -65,3 +65,16 @@ dmypy.json
 .pyre/
 .pytype/
 .ruff_cache/
+
+# ──────────────────────────────────────────────────────────────
+# v2.0 additions — local-only artifacts not for repo
+# ──────────────────────────────────────────────────────────────
+.claude/
+backend/backup/
+frontend/backup/
+PREPARE-Core-v1.1/
+backup_track2_artifacts.sh
+terminal_githubpush.notepad
+
+# Allow reference test PDFs in phase4_test/ (overrides *.pdf above)
+!phase4_test/*.pdf
