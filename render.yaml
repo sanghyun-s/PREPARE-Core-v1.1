@@ -1,0 +1,25 @@
+# Render deployment config for PREPARE Reconciliation Workspace
+# -----------------------------------------------------------------------------
+# Free web service. Connect this repo at https://dashboard.render.com → New →
+# Blueprint, and Render reads this file automatically.
+#
+# After the first deploy, set the secret in the dashboard:
+#   Service → Environment → Add ANTHROPIC_API_KEY (your key)
+# It is NOT stored in git (sync: false below).
+#
+# Note: the free tier sleeps after ~15 min idle; the first request afterward
+# takes ~30s to wake. The local filesystem is ephemeral (uploads/outputs are
+# cleared on restart) — fine for demos, not for permanent storage.
+
+services:
+  - type: web
+    name: prepare-recon
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false        # set manually in the Render dashboard (Secret)
+      - key: PYTHON_VERSION
+        value: "3.12.4"
