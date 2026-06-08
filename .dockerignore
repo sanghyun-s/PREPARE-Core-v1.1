@@ -1,0 +1,16 @@
+# Keep the image lean and never bake secrets/local state into it.
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+*.pyc
+__pycache__/
+.venv/
+venv/
+env/
+uploads_tmp/
+outputs/
+devlog/
+docs/
+*.md
